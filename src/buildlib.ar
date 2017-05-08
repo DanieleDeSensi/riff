@@ -1,0 +1,4 @@
+OPEN libknarr.a
+ADDLIB external/nanomsg/build/libnanomsg.a
+SAVE
+END
