@@ -70,7 +70,7 @@ typedef union Payload{
     ulong time;
     pid_t pid;
 
-    Payload():time(0), pid(0){;}
+    Payload(){;}
 }Payload;
 
 typedef struct Message{
