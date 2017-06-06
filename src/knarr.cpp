@@ -54,12 +54,14 @@ void Application::notifyStart(){
     Message msg;
     msg.type = MESSAGE_TYPE_START;
     msg.payload.pid = getpid();
-    assert(_channelRef.send(&msg, sizeof(msg), 0) == sizeof(msg));
+    int r = _channelRef.send(&msg, sizeof(msg), 0);
+    assert(r == sizeof(msg));
 }
 
 ulong Application::getCurrentTimeNs(){
     struct timespec tp;
-    assert(!clock_gettime(CLOCK_MONOTONIC, &tp));
+    int r = clock_gettime(CLOCK_MONOTONIC, &tp);
+    assert(!r);
     return tp.tv_sec * 1.0e9 + tp.tv_nsec;
 }
 
@@ -159,7 +161,11 @@ void Application::begin(size_t threadId){
 }
 
 void Application::storeCustomValue(size_t index, double value, size_t threadId){
-    _threadData[threadId].sample.customFields[index] = value;
+    if(index < KNARR_MAX_CUSTOM_FIELDS){
+        _threadData[threadId].sample.customFields[index] = value;
+    }else{
+        throw std::runtime_error("Custom value index out of bound. Please increase KNARR_MAX_CUSTOM_FIELDS macro value.");
+    }
 }
 
 void Application::end(size_t threadId){
@@ -193,10 +199,12 @@ void Application::terminate(){
         }
     }
     msg.payload.time = lastEnd - firstBegin;
-    assert(_channelRef.send(&msg, sizeof(msg), 0) == sizeof(msg));
+    int r = _channelRef.send(&msg, sizeof(msg), 0);
+    assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed
     // the monitor could never receive the stop).
-    assert(_channelRef.recv(&msg, sizeof(msg), 0) == sizeof(msg));
+    r = _channelRef.recv(&msg, sizeof(msg), 0);
+    assert(r == sizeof(msg));
 }
 
 Monitor::Monitor(const std::string& channelName):
@@ -220,7 +228,8 @@ Monitor::~Monitor(){
 
 pid_t Monitor::waitStart(){
     Message m;
-    assert(_channelRef.recv(&m, sizeof(m), 0) == sizeof(m));
+    int r = _channelRef.recv(&m, sizeof(m), 0);
+    assert(r == sizeof(m));
     assert(m.type == MESSAGE_TYPE_START);
     return m.payload.pid;
 }
@@ -228,17 +237,19 @@ pid_t Monitor::waitStart(){
 bool Monitor::getSample(ApplicationSample& sample){
     Message m;
     m.type = MESSAGE_TYPE_SAMPLE_REQ;
-    assert(_channelRef.send(&m, sizeof(m), 0) == sizeof(m));
-    assert(_channelRef.recv(&m, sizeof(m), 0) == sizeof(m));
+    int r = _channelRef.send(&m, sizeof(m), 0);
+    assert(r == sizeof(m));
+    r = _channelRef.recv(&m, sizeof(m), 0);
+    assert(r == sizeof(m));
     if(m.type == MESSAGE_TYPE_SAMPLE_RES){
         sample = m.payload.sample;
         return true;
     }else if(m.type == MESSAGE_TYPE_STOP){
         _executionTime = m.payload.time;
         // Send ack.
-        memset(&m, 0, sizeof(m));
         m.type = MESSAGE_TYPE_STOPACK;
-        assert(_channelRef.send(&m, sizeof(m), 0) == sizeof(m));
+        r = _channelRef.send(&m, sizeof(m), 0);
+        assert(r == sizeof(m));
         return false;
     }else{
         throw runtime_error("Unexpected message type.");

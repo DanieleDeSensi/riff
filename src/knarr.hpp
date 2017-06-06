@@ -44,7 +44,10 @@ typedef struct ApplicationSample{
 
     ApplicationSample():loadPercentage(0), tasksCount(0),
                    latency(0), bandwidthTotal(0){
-        memset(customFields, 0, sizeof(customFields));
+        // We do not use memset due to cppcheck warnings.
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] = 0;
+        }
     }
 }ApplicationSample;
 
@@ -67,7 +70,7 @@ typedef union Payload{
     ulong time;
     pid_t pid;
 
-    Payload(){memset(this, 0, sizeof(Payload));}
+    Payload():time(0), pid(0){;}
 }Payload;
 
 typedef struct Message{
@@ -104,7 +107,7 @@ typedef struct ThreadData{
                  lastEnd(0), clean(false){;}
 
     void reset(){
-        memset(&sample, 0, sizeof(sample));
+        sample = ApplicationSample();
         rcvStart = 0;
         idleTime = 0;
     }
@@ -203,7 +206,7 @@ private:
     int _chid;
     ulong _executionTime;
 public:
-    Monitor(const std::string& channelName);
+    explicit Monitor(const std::string& channelName);
     Monitor(nn::socket& socket, uint chid);
     ~Monitor();
 

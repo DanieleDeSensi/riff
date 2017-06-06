@@ -4,7 +4,7 @@ export OPTIMIZE_FLAGS        = -O3
 export CXXFLAGS              = -Wall -pedantic --std=c++11
 export LDLIBS                = -lm -pthread -lrt -L $(realpath .)/src/ -lknarr -lanl
 
-.PHONY: all demo test clean cleanall
+.PHONY: all demo test cppcheck clean cleanall
 
 all:
 	$(MAKE) -C src
@@ -12,6 +12,8 @@ demo:
 	$(MAKE) -C demo
 test:
 	$(MAKE) -C test
+cppcheck:
+	cppcheck --xml --xml-version=2 --enable=all --error-exitcode=1 -UNN_EXPORT . -isrc/external 2> cppcheck-report.xml
 clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C demo clean
