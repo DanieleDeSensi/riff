@@ -154,7 +154,7 @@ public:
     ~Application();
 
     Application(const Application& a) = delete;
-    void operator=(Application const &x) = delete;
+    Application& operator=(Application const &x) = delete;
     
     /**
      * This function must be called at each loop iteration when the computation
@@ -211,7 +211,7 @@ public:
     ~Monitor();
 
     Monitor(const Monitor& m) = delete;
-    void operator=(Monitor const &x) = delete;
+    Monitor& operator=(Monitor const &x) = delete;
     
     pid_t waitStart();
 

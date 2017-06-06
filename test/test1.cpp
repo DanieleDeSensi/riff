@@ -11,7 +11,7 @@
 #define CHNAME "ipc:///tmp/demo.ipc"
 
 #define ITERATIONS 10000
-#define NUM_THREADS 4
+#define NUM_THREADS 2
 #define TOLERANCE 0.1 // Between 0 and 1
 #define CUSTOM_VALUE_0 2
 #define CUSTOM_VALUE_1 5
@@ -85,13 +85,18 @@ int main(int argc, char** argv){
             }
             usleep(MONITORING_INTERVAL);
         }
+        uint expectedExecutionTime = (ITERATIONS*(IDLE_TIME+LATENCY))/(double)NUM_THREADS;
+        if(abs(expectedExecutionTime - mon.getExecutionTime())/expectedExecutionTime > TOLERANCE){
+            std::cerr << "Expected execution time: " << expectedExecutionTime <<
+                         " Actual execution time: " << mon.getExecutionTime() << std::endl;
+            return -1;
+        }
     }else{
         // Application. Use omp just to test the correctness when multiple
         // threads call begin/end.
         omp_set_num_threads(NUM_THREADS);
         knarr::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
         //std::cout << "[[Application]] Created." << std::endl;
-        usleep(5000000);
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){
             int threadId = omp_get_thread_num();
