@@ -15,7 +15,7 @@ script:
   # CppCheck
   - make cppcheck || cat cppcheck-report.xml
   # Tests
-  - make test
+  - make "COVERAGE_FLAGS=-DTOLERANCE=100 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov test
   # Gcov
   - cd src/ && gcov -r  knarr.cpp && cd ..
 
