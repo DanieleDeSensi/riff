@@ -20,7 +20,7 @@ script:
   # Tests
   - make test
   # Gcov
-  cd src/ && gcov -r  knarr.cpp && cd ..
+  - cd src/ && gcov -r  knarr.cpp && cd ..
 
 after_success:
     # codecov.io
