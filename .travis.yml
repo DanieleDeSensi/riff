@@ -11,7 +11,7 @@ install:
 
 script:
   # We need to increase tolerance for TravisCI since there are unpredictable effects.
-  - make TOLERANCE=100 "COVERAGE_FLAGS=-fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov
+  - make "COVERAGE_FLAGS=-DTOLERANCE=100 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov
   # CppCheck
   - make cppcheck || cat cppcheck-report.xml
   # Tests
