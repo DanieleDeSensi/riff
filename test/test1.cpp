@@ -12,7 +12,9 @@
 
 #define ITERATIONS 10000
 #define NUM_THREADS 2
+#ifndef TOLERANCE
 #define TOLERANCE 0.1 // Between 0 and 1
+#endif
 #define CUSTOM_VALUE_0 2
 #define CUSTOM_VALUE_1 5
 
