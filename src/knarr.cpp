@@ -65,6 +65,7 @@ ulong Application::getCurrentTimeNs(){
 }
 
 void Application::begin(size_t threadId){
+    ThreadData& tData = _threadData[threadId];
     ulong now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
@@ -73,20 +74,20 @@ void Application::begin(size_t threadId){
         if(!_started){
             notifyStart();
             _started = true;
-            _threadData[threadId].firstBegin = now;
+            tData.firstBegin = now;
         }
         pthread_mutex_unlock(&_mutex);
 
     }
-    _threadData[threadId].lastEnd = now;
-    if(_threadData[threadId].computeStart){
-        if(_threadData[threadId].rcvStart){
-            _threadData[threadId].idleTime += (now - _threadData[threadId].rcvStart);
+    tData.lastEnd = now;
+    if(tData.computeStart){
+        if(tData.rcvStart){
+            tData.idleTime += (now - tData.rcvStart);
         }else{
-            _threadData[threadId].sample.latency += (now - _threadData[threadId].computeStart);
+            tData.sample.latency += (now - tData.computeStart);
         }
-        ++_threadData[threadId].sample.tasksCount;
-        _threadData[threadId].computeStart = now;
+        ++tData.sample.tasksCount;
+        tData.computeStart = now;
 
         Message recvdMsg;
         pthread_mutex_lock(&_mutex);
@@ -100,15 +101,16 @@ void Application::begin(size_t threadId){
 
             // Add the samples of the other threads.
             for(size_t i = 0; i < _threadData.size(); i++){
-                ulong totalTime = (_threadData[i].sample.latency + _threadData[i].idleTime);
-                _threadData[i].sample.bandwidthTotal = (double) _threadData[i].sample.tasksCount / totalTime;
-                _threadData[i].sample.loadPercentage = ((double) _threadData[i].sample.latency / totalTime) * 100.0;
-                _threadData[i].sample.latency /= (double) _threadData[i].sample.tasksCount;
+                ApplicationSample& sample = _threadData[i].sample;
+                ulong totalTime = (td.sample.latency + _threadData[i].idleTime);
+                sample.bandwidthTotal = sample.tasksCount / totalTime;
+                sample.loadPercentage = (sample.latency / totalTime) * 100.0;
+                sample.latency /= sample.tasksCount;
 
-                msg.payload.sample.bandwidthTotal += _threadData[i].sample.bandwidthTotal;
-                msg.payload.sample.latency += _threadData[i].sample.latency;
-                msg.payload.sample.loadPercentage += _threadData[i].sample.loadPercentage;
-                msg.payload.sample.tasksCount += _threadData[i].sample.tasksCount;
+                msg.payload.sample.bandwidthTotal += sample.bandwidthTotal;
+                msg.payload.sample.latency += sample.latency;
+                msg.payload.sample.loadPercentage += sample.loadPercentage;
+                msg.payload.sample.tasksCount += sample.tasksCount;
             }
             msg.payload.sample.loadPercentage /= _threadData.size();
             msg.payload.sample.latency /= _threadData.size();
@@ -128,12 +130,11 @@ void Application::begin(size_t threadId){
             // Send message
             _channelRef.send(&msg, sizeof(msg), 0);
             // Reset fields
-            _threadData[threadId].reset();
+            tData.reset();
             // Tell other threads to clear their sample since current one have
             // been already sent.
             for(size_t i = 0; i < _threadData.size(); i++){
                 if(i != threadId){
-                    DEBUG(threadId << " asking " << i << " to clean.");
                     _threadData[i].clean = true;
                 }
             }
@@ -148,15 +149,14 @@ void Application::begin(size_t threadId){
 
         // It may seem stupid to clean things after they have just been set,
         // but it is better to do not move earlier the following code.
-        if(_threadData[threadId].clean){
-            _threadData[threadId].clean = false;
+        if(tData.clean){
+            tData.clean = false;
             // Reset fields
-            DEBUG(threadId << " cleaning.");
-            _threadData[threadId].reset();
+            tData.reset();
         }
 
     }else{
-        _threadData[threadId].computeStart = now;
+        tData.computeStart = now;
     }
 }
 
@@ -164,24 +164,20 @@ void Application::storeCustomValue(size_t index, double value, size_t threadId){
     if(index < KNARR_MAX_CUSTOM_FIELDS){
         _threadData[threadId].sample.customFields[index] = value;
     }else{
-        throw std::runtime_error("Custom value index out of bound. Please increase KNARR_MAX_CUSTOM_FIELDS macro value.");
+        throw std::runtime_error("Custom value index out of bound. Please "
+                                 "increase KNARR_MAX_CUSTOM_FIELDS macro value.");
     }
 }
 
 void Application::end(size_t threadId){
     if(!_started){
-        pthread_mutex_lock(&_mutex);
-        // This awful double check is done to avoid locking the flag
-        // every time (this code is executed at most once).
-        if(!_started){
-            notifyStart();
-            _started = true;
-        }
-        pthread_mutex_unlock(&_mutex);
+        throw std::runtime_error("end() called without begin().");
     }
     _threadData[threadId].rcvStart = getCurrentTimeNs();
     if(_threadData[threadId].computeStart){
-        _threadData[threadId].sample.latency += (_threadData[threadId].rcvStart - _threadData[threadId].computeStart);
+        double newLatency = (_threadData[threadId].rcvStart - 
+                             _threadData[threadId].computeStart);
+        _threadData[threadId].sample.latency += newLatency;
     }
     _threadData[threadId].lastEnd = _threadData[threadId].rcvStart;
 }
@@ -198,7 +194,7 @@ void Application::terminate(){
             lastEnd = td.lastEnd;
         }
     }
-    msg.payload.time = (lastEnd - firstBegin) / 1000000; // Must be in milliseconds
+    msg.payload.time = (lastEnd - firstBegin) / 1000000; // Must be in ms
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed

@@ -10,7 +10,7 @@ install:
   - sudo apt-get install -qq cppcheck
 
 script:
-  - make "COVERAGE_FLAGS=-DTOLERANCE=0.1 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov
+  - make "-fprofile-arcs -ftest-coverage"
   # CppCheck
   - make cppcheck || cat cppcheck-report.xml
   # Tests
@@ -19,8 +19,10 @@ script:
   - cd src/ && gcov -r knarr.cpp && cd ..
 
 after_success:
+    # Remove unnecessary coverage files
+    - rm src/nn.hpp.gcov
     # codecov.io
-    - bash <(curl -s https://codecov.io/bash) -X gcov -f src/knarr.cpp.gcov
+    - bash <(curl -s https://codecov.io/bash) -X gcov -f src/*.gcov
 
 notifications:
   email:

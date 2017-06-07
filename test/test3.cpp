@@ -1,5 +1,5 @@
 /**
- * Test: Checks the correctness of the library when used by multiple threads and
+ * Test: Checks the correctness of the library 
  * when calling only 'begin()' instead of the 'begin()'/'end()' pair and when
  * using already existing nanomsg sockets and 1 thread only.
  */
@@ -12,7 +12,7 @@
 
 #define CHNAME "ipc:///tmp/demo.ipc"
 
-#define ITERATIONS 10000
+#define ITERATIONS 5000
 #ifndef TOLERANCE
 #define TOLERANCE 0.1 // Between 0 and 1
 #endif

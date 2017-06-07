@@ -9,7 +9,8 @@
 #include <string>
 #include <vector>
 
-#define KNARR_MAX_CUSTOM_FIELDS 8
+#define KNARR_MAX_CUSTOM_FIELDS 4
+#define KNARR_MAX_EXTRA_FIELDS 4
 
 namespace knarr{
 
@@ -43,11 +44,19 @@ typedef struct ApplicationSample{
     // Custom user fields.
     double customFields[KNARR_MAX_CUSTOM_FIELDS];
 
+    // Extra fields. Similar to custom fields, but designed to be used and 
+    // after the sample has been already filled and received from the 
+    // application.
+    double extraFields[KNARR_MAX_EXTRA_FIELDS];
+
     ApplicationSample():loadPercentage(0), tasksCount(0),
                    latency(0), bandwidthTotal(0){
         // We do not use memset due to cppcheck warnings.
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] = 0;
+        }
+        for(size_t i = 0; i < KNARR_MAX_EXTRA_FIELDS; i++){
+            extraFields[i] = 0;
         }
     }
 }ApplicationSample;
