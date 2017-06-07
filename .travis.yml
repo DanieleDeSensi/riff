@@ -10,7 +10,7 @@ install:
   - sudo apt-get install -qq cppcheck
 
 script:
-  - make "-fprofile-arcs -ftest-coverage"
+  - make "COVERAGE_FLAGS=-fprofile-arcs -ftest-coverage"
   # CppCheck
   - make cppcheck || cat cppcheck-report.xml
   # Tests
