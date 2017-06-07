@@ -1,5 +1,4 @@
 #include "external/cppnanomsg/nn.hpp"
-#include "external/nanomsg/src/pair.h"
 
 #include "knarr.hpp"
 
@@ -97,6 +96,7 @@ void Application::begin(size_t threadId){
             // Prepare response message.
             Message msg;
             msg.type = MESSAGE_TYPE_SAMPLE_RES;
+            msg.payload.sample = ApplicationSample(); // Set sample to all zeros
 
             // Add the samples of the other threads.
             for(size_t i = 0; i < _threadData.size(); i++){
@@ -198,7 +198,7 @@ void Application::terminate(){
             lastEnd = td.lastEnd;
         }
     }
-    msg.payload.time = lastEnd - firstBegin;
+    msg.payload.time = (lastEnd - firstBegin) / 1000000; // Must be in milliseconds
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed

@@ -2,6 +2,7 @@
 #define KNARR_HPP_
 
 #include "external/cppnanomsg/nn.hpp"
+#include "external/nanomsg/src/pair.h"
 
 #include <pthread.h>
 #include <iostream>
