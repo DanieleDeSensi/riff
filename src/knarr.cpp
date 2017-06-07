@@ -102,7 +102,7 @@ void Application::begin(size_t threadId){
             // Add the samples of the other threads.
             for(size_t i = 0; i < _threadData.size(); i++){
                 ApplicationSample& sample = _threadData[i].sample;
-                ulong totalTime = (td.sample.latency + _threadData[i].idleTime);
+                ulong totalTime = (sample.latency + _threadData[i].idleTime);
                 sample.bandwidthTotal = sample.tasksCount / totalTime;
                 sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                 sample.latency /= sample.tasksCount;
