@@ -86,7 +86,7 @@ void Application::begin(size_t threadId){
         }else{
             tData.sample.latency += (now - tData.computeStart);
         }
-        ++tData.sample.tasksCount;
+        ++tData.sample.numTasks;
         tData.computeStart = now;
 
         Message recvdMsg;
@@ -103,14 +103,14 @@ void Application::begin(size_t threadId){
             for(size_t i = 0; i < _threadData.size(); i++){
                 ApplicationSample& sample = _threadData[i].sample;
                 ulong totalTime = (sample.latency + _threadData[i].idleTime);
-                sample.bandwidthTotal = sample.tasksCount / totalTime;
+                sample.bandwidth = sample.numTasks / totalTime;
                 sample.loadPercentage = (sample.latency / totalTime) * 100.0;
-                sample.latency /= sample.tasksCount;
+                sample.latency /= sample.numTasks;
 
-                msg.payload.sample.bandwidthTotal += sample.bandwidthTotal;
+                msg.payload.sample.bandwidth += sample.bandwidth;
                 msg.payload.sample.latency += sample.latency;
                 msg.payload.sample.loadPercentage += sample.loadPercentage;
-                msg.payload.sample.tasksCount += sample.tasksCount;
+                msg.payload.sample.numTasks += sample.numTasks;
             }
             msg.payload.sample.loadPercentage /= _threadData.size();
             msg.payload.sample.latency /= _threadData.size();

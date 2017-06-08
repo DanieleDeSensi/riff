@@ -63,9 +63,9 @@ int main(int argc, char** argv){
                              " Actual utilization: " << sample.loadPercentage << std::endl;
                 return -1;
             }
-            if(abs(expectedTasks - sample.tasksCount)/(double) expectedTasks > TOLERANCE){
+            if(abs(expectedTasks - sample.numTasks)/(double) expectedTasks > TOLERANCE){
                 std::cerr << "Expected tasks: " << expectedTasks <<
-                             " Actual tasks: " << sample.tasksCount << std::endl;
+                             " Actual tasks: " << sample.numTasks << std::endl;
                 return -1;
             }
             // We need enough long monitoring interval to store at least once

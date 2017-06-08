@@ -22,7 +22,7 @@ after_success:
     # Remove unnecessary coverage files
     - rm src/nn.hpp.gcov
     # codecov.io
-    - bash <(curl -s https://codecov.io/bash) -X gcov -f src/*.gcov
+    - bash <(curl -s https://codecov.io/bash) -X gcov -f 'src/*.gcov'
 
 notifications:
   email:

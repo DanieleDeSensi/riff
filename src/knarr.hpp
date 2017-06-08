@@ -4,13 +4,13 @@
 #include "external/cppnanomsg/nn.hpp"
 #include "external/nanomsg/src/pair.h"
 
+#include <algorithm>
 #include <pthread.h>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #define KNARR_MAX_CUSTOM_FIELDS 4
-#define KNARR_MAX_EXTRA_FIELDS 4
 
 namespace knarr{
 
@@ -32,42 +32,165 @@ typedef struct ApplicationSample{
     // The percentage ([0, 100]) of time that the node spent in the computation.
     double loadPercentage;
 
-    // The number of computed tasks.
-    double tasksCount;
+    // The bandwidth of the application.
+    double bandwidth;
 
     // The average latency (nanoseconds).
     double latency;
 
-    // The bandwidth of the application.
-    double bandwidthTotal;
+    // The number of computed tasks.
+    double numTasks;
 
     // Custom user fields.
     double customFields[KNARR_MAX_CUSTOM_FIELDS];
 
-    // Extra fields. Similar to custom fields, but designed to be used and 
-    // after the sample has been already filled and received from the 
-    // application.
-    double extraFields[KNARR_MAX_EXTRA_FIELDS];
-
-    ApplicationSample():loadPercentage(0), tasksCount(0),
-                   latency(0), bandwidthTotal(0){
+    ApplicationSample():loadPercentage(0), bandwidth(0),
+                        latency(0), numTasks(0){
         // We do not use memset due to cppcheck warnings.
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] = 0;
         }
-        for(size_t i = 0; i < KNARR_MAX_EXTRA_FIELDS; i++){
-            extraFields[i] = 0;
+    }
+
+    ApplicationSample(ApplicationSample const& sample):
+        loadPercentage(sample.loadPercentage), bandwidth(sample.bandwidth),
+        latency(sample.latency), numTasks(sample.numTasks){
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] = sample.customFields[i];
         }
+    }
+
+    void swap(ApplicationSample& x){
+        using std::swap;
+
+        swap(loadPercentage, x.loadPercentage);
+        swap(bandwidth, x.bandwidth);
+        swap(latency, x.latency);
+        swap(numTasks, x.numTasks);
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            swap(customFields[i], x.customFields[i]);
+        }
+    }
+
+    ApplicationSample& operator=(ApplicationSample rhs){
+        swap(rhs);
+        return *this;
+    }
+
+    ApplicationSample& operator+=(const ApplicationSample& rhs){
+        loadPercentage += rhs.loadPercentage;
+        bandwidth += rhs.bandwidth;
+        latency += rhs.latency;
+        numTasks += rhs.numTasks;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] += rhs.customFields[i];
+        }
+        return *this;
+    }
+
+    ApplicationSample& operator-=(const ApplicationSample& rhs){
+        loadPercentage -= rhs.loadPercentage;
+        bandwidth -= rhs.bandwidth;
+        latency -= rhs.latency;
+        numTasks -= rhs.numTasks;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] -= rhs.customFields[i];
+        }
+        return *this;
+    }
+
+    ApplicationSample& operator*=(const ApplicationSample& rhs){
+        loadPercentage *= rhs.loadPercentage;
+        bandwidth *= rhs.bandwidth;
+        latency *= rhs.latency;
+        numTasks *= rhs.numTasks;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] *= rhs.customFields[i];
+        }
+        return *this;
+    }
+
+    ApplicationSample& operator/=(const ApplicationSample& rhs){
+        loadPercentage /= rhs.loadPercentage;
+        bandwidth /= rhs.bandwidth;
+        latency /= rhs.latency;
+        numTasks /= rhs.numTasks;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] /= rhs.customFields[i];
+        }
+        return *this;
+    }
+
+    ApplicationSample operator/=(double x){
+        loadPercentage /= x;
+        bandwidth /= x;
+        latency /= x;
+        numTasks /= x;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] /= x;
+        }
+        return *this;
+    }
+
+    ApplicationSample operator*=(double x){
+        loadPercentage *= x;
+        bandwidth *= x;
+        latency *= x;
+        numTasks *= x;
+        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+            customFields[i] *= x;
+        }
+        return *this;
     }
 }ApplicationSample;
 
 
+inline ApplicationSample operator+(const ApplicationSample& lhs,
+                                   const ApplicationSample& rhs){
+    ApplicationSample r = lhs;
+    r += rhs;
+    return r;
+}
+
+inline ApplicationSample operator-(const ApplicationSample& lhs,
+                                   const ApplicationSample& rhs){
+    ApplicationSample r = lhs;
+    r -= rhs;
+    return r;
+}
+
+inline ApplicationSample operator*(const ApplicationSample& lhs,
+                                   const ApplicationSample& rhs){
+    ApplicationSample r = lhs;
+    r *= rhs;
+    return r;
+}
+
+inline ApplicationSample operator*(const ApplicationSample& lhs, double x){
+    ApplicationSample r = lhs;
+    r *= x;
+    return r;
+}
+
+inline ApplicationSample operator/(const ApplicationSample& lhs,
+                                   const ApplicationSample& rhs){
+    ApplicationSample r = lhs;
+    r /= rhs;
+    return r;
+}
+
+inline ApplicationSample operator/(const ApplicationSample& lhs, double x){
+    ApplicationSample r = lhs;
+    r /= x;
+    return r;
+}
+
 inline std::ostream& operator<<(std::ostream& os, const ApplicationSample& obj){
     os << "[";
     os << "Load: " << obj.loadPercentage << " ";
-    os << "TasksCount: " << obj.tasksCount << " ";
+    os << "Bandwidth: " << obj.bandwidth << " ";
     os << "Latency: " << obj.latency << " ";
-    os << "Bandwidth: " << obj.bandwidthTotal << " ";
+    os << "NumTasks: " << obj.numTasks << " ";
     for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
         os << "CustomField" << i << ": " << obj.customFields[i] << " ";
     }
