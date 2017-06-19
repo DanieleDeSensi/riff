@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <omp.h>
-
+#include <sstream>
 
 #define CHNAME "ipc:///tmp/demo.ipc"
 
@@ -93,6 +93,22 @@ int main(int argc, char** argv){
     assert(r.numTasks == sample.numTasks / sample2.numTasks);
     for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
         assert(r.customFields[i] == sample.customFields[i] / sample2.customFields[i]);
+    }
+
+    // Load
+    std::string fieldStr = "[Load: 90 Bandwidth: 100 Latency: 200 NumTasks: 300 "
+                           "CustomField0: 0 CustomField1: 1 CustomField2: 2 "
+                           "CustomField3: 3 CustomField4: 4 CustomField5: 5 "
+                           "CustomField6: 6 CustomField7: 7 CustomField8: 8 "
+                           "CustomField9: 9]";
+    std::stringstream ss(fieldStr);
+    ss >> sample;
+    assert(sample.loadPercentage == 90);
+    assert(sample.bandwidth == 100);
+    assert(sample.latency == 200);
+    assert(sample.numTasks == 300);
+    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        assert(sample.customFields[i] == i);
     }
     return 0;
 }

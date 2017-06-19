@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <limits>
 
 #define KNARR_MAX_CUSTOM_FIELDS 4
 
@@ -196,6 +197,24 @@ inline std::ostream& operator<<(std::ostream& os, const ApplicationSample& obj){
     }
     os << "]";
     return os;
+}
+
+inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
+    is.ignore(std::numeric_limits<std::streamsize>::max(), '[');
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+    is >> sample.loadPercentage;
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+    is >> sample.bandwidth;
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+    is >> sample.latency;
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+    is >> sample.numTasks;
+    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+        is >> sample.customFields[i];
+    }
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ']');
+    return is;
 }
 
 typedef union Payload{
