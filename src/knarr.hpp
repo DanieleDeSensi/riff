@@ -220,6 +220,7 @@ inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
 typedef union Payload{
     ApplicationSample sample;
     ulong time;
+    unsigned long long totalTasks;
     pid_t pid;
 
     Payload(){;}
@@ -253,6 +254,7 @@ typedef struct ThreadData{
     ulong idleTime;
     ulong firstBegin;
     ulong lastEnd;
+    unsigned long long totalTasks;
     bool clean;
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
@@ -357,6 +359,7 @@ private:
     nn::socket& _channelRef;
     int _chid;
     ulong _executionTime;
+    unsigned long long _totalTasks;
 public:
     explicit Monitor(const std::string& channelName);
     Monitor(nn::socket& socket, uint chid);
@@ -375,6 +378,14 @@ public:
      * The time is from the first call of begin() to the last call of end().
      */
     ulong getExecutionTime();
+
+    /**
+     * Returns the total number of tasks computed by the application.
+     * @return The total number of tasks computed by the application.
+     * Is computed as the sum of tasks executed from the first call 
+     * of begin() to the last call of end().
+     */
+    unsigned long long getTotalTasks();
 };
 
 } // End namespace

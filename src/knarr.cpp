@@ -24,6 +24,10 @@ using namespace std;
 
 namespace knarr{
 
+static void* applicationSupportThread(void* ){
+    ;
+}
+
 Application::Application(const std::string& channelName, size_t numThreads,
                          Aggregator* aggregator):
 	    _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
@@ -31,6 +35,9 @@ Application::Application(const std::string& channelName, size_t numThreads,
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     _threadData.resize(numThreads);
+    for(ThreadData td : _threadData){
+        memset(&td, 0, sizeof(td));
+    }
     pthread_mutex_init(&_mutex, NULL);
 }
 
@@ -39,6 +46,9 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
         _aggregator(aggregator){
     _threadData.resize(numThreads);
+    for(ThreadData td : _threadData){
+        memset(&td, 0, sizeof(td));
+    }
     pthread_mutex_init(&_mutex, NULL);
 }
 
@@ -87,6 +97,7 @@ void Application::begin(size_t threadId){
             tData.sample.latency += (now - tData.computeStart);
         }
         ++tData.sample.numTasks;
+        ++tData.totalTasks;
         tData.computeStart = now;
 
         Message recvdMsg;
@@ -103,7 +114,7 @@ void Application::begin(size_t threadId){
             for(size_t i = 0; i < _threadData.size(); i++){
                 ApplicationSample& sample = _threadData[i].sample;
                 ulong totalTime = (sample.latency + _threadData[i].idleTime);
-                sample.bandwidth = sample.numTasks / totalTime;
+                sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
                 sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                 sample.latency /= sample.numTasks;
 
@@ -186,7 +197,9 @@ void Application::terminate(){
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
     uint lastEnd = 0, firstBegin = std::numeric_limits<uint>::max();
+    unsigned long long totalTasks = 0; 
     for(ThreadData td : _threadData){
+        totalTasks += td.totalTasks;
         if(td.firstBegin < firstBegin){
             firstBegin = td.firstBegin;
         }
@@ -195,6 +208,7 @@ void Application::terminate(){
         }
     }
     msg.payload.time = (lastEnd - firstBegin) / 1000000; // Must be in ms
+    msg.payload.totalTasks = totalTasks;
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed
@@ -205,13 +219,13 @@ void Application::terminate(){
 
 Monitor::Monitor(const std::string& channelName):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-        _executionTime(0){
+        _executionTime(0), _totalTasks(0){
     _chid = _channelRef.bind(channelName.c_str());
     assert(_chid >= 0);
 }
 
 Monitor::Monitor(nn::socket& socket, uint chid):
-        _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0){
+        _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0), _totalTasks(0){
     ;
 }
 
@@ -242,6 +256,7 @@ bool Monitor::getSample(ApplicationSample& sample){
         return true;
     }else if(m.type == MESSAGE_TYPE_STOP){
         _executionTime = m.payload.time;
+        _totalTasks = m.payload.totalTasks;
         // Send ack.
         m.type = MESSAGE_TYPE_STOPACK;
         r = _channelRef.send(&m, sizeof(m), 0);
@@ -254,6 +269,10 @@ bool Monitor::getSample(ApplicationSample& sample){
 
 ulong Monitor::getExecutionTime(){
     return _executionTime;
+}
+
+unsigned long long Monitor::getTotalTasks(){
+    return _totalTasks;
 }
 
 } // End namespace

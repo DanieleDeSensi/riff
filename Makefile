@@ -13,7 +13,7 @@ demo:
 test:
 	$(MAKE) -C test
 cppcheck:
-	cppcheck --xml --xml-version=2 --enable=all --error-exitcode=1 -UNN_EXPORT . -isrc/external 2> cppcheck-report.xml
+	cppcheck --xml --xml-version=2 --enable=warning,performance,information,style --error-exitcode=1 -UNN_EXPORT . -isrc/external -itest 2> cppcheck-report.xml
 clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C demo clean
