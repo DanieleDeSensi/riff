@@ -24,7 +24,8 @@ using namespace std;
 
 namespace knarr{
 
-static void* applicationSupportThread(void* ){
+void* applicationSupportThread(void* data){
+    Application* application = (Application*) data;
     ;
 }
 
@@ -84,10 +85,12 @@ void Application::begin(size_t threadId){
         if(!_started){
             notifyStart();
             _started = true;
-            tData.firstBegin = now;
         }
         pthread_mutex_unlock(&_mutex);
 
+    }
+    if(!tData.firstBegin){
+		tData.firstBegin = now;
     }
     tData.lastEnd = now;
     if(tData.computeStart){
@@ -196,7 +199,7 @@ void Application::end(size_t threadId){
 void Application::terminate(){
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
-    uint lastEnd = 0, firstBegin = std::numeric_limits<uint>::max();
+    ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max();
     unsigned long long totalTasks = 0; 
     for(ThreadData td : _threadData){
         totalTasks += td.totalTasks;
@@ -207,7 +210,7 @@ void Application::terminate(){
             lastEnd = td.lastEnd;
         }
     }
-    msg.payload.time = (lastEnd - firstBegin) / 1000000; // Must be in ms
+    msg.payload.time = (lastEnd - firstBegin) / 1000000.0; // Must be in ms
     msg.payload.totalTasks = totalTasks;
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));

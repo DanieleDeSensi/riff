@@ -267,7 +267,10 @@ typedef struct ThreadData{
     }
 }ThreadData;
 
+void* applicationSupportThread(void*);
+
 class Application{
+    friend void* applicationSupportThread(void*);
 private:
     nn::socket* _channel;
     nn::socket& _channelRef;
