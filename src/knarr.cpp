@@ -78,6 +78,7 @@ void* applicationSupportThread(void* data){
             throw std::runtime_error("Received less bytes than expected.");
         }
     }
+	return NULL;
 }
 
 Application::Application(const std::string& channelName, size_t numThreads,
@@ -186,7 +187,6 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
         throw std::runtime_error("Custom value index out of bound. Please "
                                  "increase KNARR_MAX_CUSTOM_FIELDS macro value.");
     }
-    return NULL;
 }
 
 void Application::end(uint threadId){
