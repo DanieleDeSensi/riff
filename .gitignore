@@ -1,0 +1,7 @@
+cppcheck-report.xml
+src/knarr.o
+src/libknarr.a
+test/test1
+test/test2
+test/test3
+test/test4

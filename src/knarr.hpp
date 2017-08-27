@@ -279,7 +279,8 @@ private:
     bool _started;
     Aggregator* _aggregator;
     pthread_mutex_t _mutex;
-
+    pthread_t _supportTid;
+    bool _supportStop;
     std::map<uint, ThreadData> _threadData;
 
     // We are sure it is called by at most one thread.
