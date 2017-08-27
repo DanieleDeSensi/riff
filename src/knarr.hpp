@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <iostream>
 #include <string>
+#include <map>
 #include <vector>
 #include <limits>
 
@@ -279,7 +280,7 @@ private:
     Aggregator* _aggregator;
     pthread_mutex_t _mutex;
 
-    std::vector<ThreadData> _threadData;
+    std::map<uint, ThreadData> _threadData;
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -317,12 +318,10 @@ public:
      * This function must be called at each loop iteration when the computation
      * part of the loop begins.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). The value is the thread id, in the
-     *        range [0, n[, where n is the number of threads calling this
-     *        function. n must also have been specified when constructing this
-     *        object.
+     *        (e.g. inside a parallel loop). It can be any number univocally
+     *        identifying the thread calling this function.
      */
-    void begin(size_t threadId = 0);
+    void begin(uint threadId = 0);
 
     /**
      * This function stores a custom value in the sample. It should be called
@@ -330,23 +329,19 @@ public:
      * @param index The index of the value [0, KNARR_MAX_CUSTOM_FIELDS[
      * @param value The value.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). The value is the thread id, in the
-     *        range [0, n[, where n is the number of threads calling this
-     *        function. n must also have been specified when constructing this
-     *        object.
+     *        (e.g. inside a parallel loop). It can be any number univocally
+     *        identifying the thread calling this function.
      */
-    void storeCustomValue(size_t index, double value, size_t threadId = 0);
+    void storeCustomValue(size_t index, double value, uint threadId = 0);
 
     /**
      * This function must be called at each loop iteration when the computation
      * part of the loop ends.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). The value is the thread id, in the
-     *        range [0, n[, where n is the number of threads calling this
-     *        function. n must also have been specified when constructing this
-     *        object.
+     *        (e.g. inside a parallel loop). It can be any number univocally
+     *        identifying the thread calling this function.
      */
-    void end(size_t threadId = 0);
+    void end(uint threadId = 0);
 
     /**
      * This function must only be called once, when the parallel part

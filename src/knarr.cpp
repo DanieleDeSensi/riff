@@ -35,10 +35,6 @@ Application::Application(const std::string& channelName, size_t numThreads,
 	    _started(false), _aggregator(aggregator){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
-    _threadData.resize(numThreads);
-    for(ThreadData td : _threadData){
-        memset(&td, 0, sizeof(td));
-    }
     pthread_mutex_init(&_mutex, NULL);
 }
 
@@ -46,10 +42,6 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
                          Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
         _aggregator(aggregator){
-    _threadData.resize(numThreads);
-    for(ThreadData td : _threadData){
-        memset(&td, 0, sizeof(td));
-    }
     pthread_mutex_init(&_mutex, NULL);
 }
 
@@ -75,8 +67,16 @@ ulong Application::getCurrentTimeNs(){
     return tp.tv_sec * 1.0e9 + tp.tv_nsec;
 }
 
-void Application::begin(size_t threadId){
+void Application::begin(uint threadId){
+    bool toMemset = false;
+    if(_threadData.find(threadId) == _threadData.end()){
+        _threadData[threadId] = ThreadData();
+        toMemset = true;
+    }
     ThreadData& tData = _threadData[threadId];
+    if(toMemset){
+        memset(&tData, 0, sizeof(ThreadData));
+    }
     ulong now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
@@ -114,9 +114,9 @@ void Application::begin(size_t threadId){
             msg.payload.sample = ApplicationSample(); // Set sample to all zeros
 
             // Add the samples of the other threads.
-            for(size_t i = 0; i < _threadData.size(); i++){
-                ApplicationSample& sample = _threadData[i].sample;
-                ulong totalTime = (sample.latency + _threadData[i].idleTime);
+            for(std::pair<const uint, ThreadData>& toAdd : _threadData){
+                ApplicationSample& sample = toAdd.second.sample;
+                ulong totalTime = (sample.latency + toAdd.second.idleTime);
                 sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
                 sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                 sample.latency /= sample.numTasks;
@@ -134,8 +134,8 @@ void Application::begin(size_t threadId){
                 customVec.reserve(_threadData.size());
                 for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
                     customVec.clear();
-                    for(ThreadData td : _threadData){
-                        customVec.push_back(td.sample.customFields[i]);
+                    for(std::pair<const uint, ThreadData>& td : _threadData){
+                        customVec.push_back(td.second.sample.customFields[i]);
                     }
                     msg.payload.sample.customFields[i] = _aggregator->aggregate(i, customVec);
                 }
@@ -147,9 +147,9 @@ void Application::begin(size_t threadId){
             tData.reset();
             // Tell other threads to clear their sample since current one have
             // been already sent.
-            for(size_t i = 0; i < _threadData.size(); i++){
-                if(i != threadId){
-                    _threadData[i].clean = true;
+            for(std::pair<const uint, ThreadData>& toClean : _threadData){
+                if(toClean.first != threadId){
+                    toClean.second.clean = true;
                 }
             }
         }else if(res == -1 && errno != EAGAIN){
@@ -174,16 +174,25 @@ void Application::begin(size_t threadId){
     }
 }
 
-void Application::storeCustomValue(size_t index, double value, size_t threadId){
+void Application::storeCustomValue(size_t index, double value, uint threadId){
     if(index < KNARR_MAX_CUSTOM_FIELDS){
-        _threadData[threadId].sample.customFields[index] = value;
+        bool toMemset = false;
+        if(_threadData.find(threadId) == _threadData.end()){
+            _threadData[threadId] = ThreadData();
+            toMemset = true;
+        }
+        ThreadData& tData = _threadData[threadId];
+        if(toMemset){
+            memset(&tData, 0, sizeof(ThreadData));
+        }
+        tData.sample.customFields[index] = value;
     }else{
         throw std::runtime_error("Custom value index out of bound. Please "
                                  "increase KNARR_MAX_CUSTOM_FIELDS macro value.");
     }
 }
 
-void Application::end(size_t threadId){
+void Application::end(uint threadId){
     if(!_started){
         throw std::runtime_error("end() called without begin().");
     }
@@ -201,14 +210,15 @@ void Application::terminate(){
     msg.type = MESSAGE_TYPE_STOP;
     ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max();
     unsigned long long totalTasks = 0; 
-    for(ThreadData td : _threadData){
-        totalTasks += td.totalTasks;
-        if(td.firstBegin < firstBegin){
-            firstBegin = td.firstBegin;
+    for(std::pair<const uint, ThreadData>& td : _threadData){
+        totalTasks += td.second.totalTasks;
+        if(td.second.firstBegin < firstBegin){
+            firstBegin = td.second.firstBegin;
         }
-        if(td.lastEnd > lastEnd){
-            lastEnd = td.lastEnd;
+        if(td.second.lastEnd > lastEnd){
+            lastEnd = td.second.lastEnd;
         }
+        std::cout << "firstbegin " << firstBegin << " lastend " << lastEnd << std::endl;
     }
     msg.payload.time = (lastEnd - firstBegin) / 1000000.0; // Must be in ms
     msg.payload.totalTasks = totalTasks;

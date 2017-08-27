@@ -17,7 +17,9 @@ cppcheck:
 clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C demo clean
+	$(MAKE) -C test clean
 cleanall:
 	$(MAKE) -C src cleanall
 	$(MAKE) -C demo cleanall
+	$(MAKE) -C test cleanall
 
