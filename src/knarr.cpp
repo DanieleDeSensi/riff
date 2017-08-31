@@ -26,6 +26,11 @@ namespace knarr{
 
 void* applicationSupportThread(void* data){
     Application* application = (Application*) data;
+    std::map<uint, ulong> lastStoredEnd;
+    // Init lastStoredEnd
+    for(std::pair<const uint, ThreadData>& curr : application->_threadData){
+        lastStoredEnd[curr.first] = 0;
+    }
 
     while(!application->_supportStop){
         Message recvdMsg;
@@ -40,10 +45,19 @@ void* applicationSupportThread(void* data){
             // Add the samples of the other threads.
             for(std::pair<const uint, ThreadData>& toAdd : application->_threadData){
                 ApplicationSample& sample = toAdd.second.sample;
-                ulong totalTime = (sample.latency + toAdd.second.idleTime);
-                sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
-                sample.loadPercentage = (sample.latency / totalTime) * 100.0;
-                sample.latency /= sample.numTasks;
+                if(toAdd.second.lastEnd != lastStoredEnd[toAdd.first]){
+                    ulong totalTime = (sample.latency + toAdd.second.idleTime);
+                    sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
+                    sample.loadPercentage = (sample.latency / totalTime) * 100.0;
+                    sample.latency /= sample.numTasks;
+                    lastStoredEnd[toAdd.first] = toAdd.second.lastEnd;
+                }else{
+                    // No updates performed since the last one.
+                    sample.bandwidth = 0;
+                    sample.loadPercentage = 0;
+                    sample.numTasks = 0;
+                    sample.latency = std::numeric_limits<double>::max();
+                }
 
                 msg.payload.sample.bandwidth += sample.bandwidth;
                 msg.payload.sample.latency += sample.latency;
