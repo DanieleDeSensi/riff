@@ -259,7 +259,7 @@ typedef struct ThreadData{
     bool clean;
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
-                 lastEnd(0), clean(false){;}
+                 lastEnd(0), totalTasks(0), clean(false){;}
 
     void reset(){
         sample = ApplicationSample();
@@ -282,6 +282,8 @@ private:
     pthread_t _supportTid;
     bool _supportStop;
     std::map<uint, ThreadData> _threadData;
+    ulong _executionTime;
+    unsigned long long _totalTasks;
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -350,6 +352,23 @@ public:
      * NOTE: It is not thread safe!
      */
     void terminate();
+    
+    /**
+     * Returns the execution time of the application (milliseconds).
+     * MUST be called after terminate().
+     * @return The execution time of the application (milliseconds).
+     * The time is from the first call of begin() to the last call of end().
+     */
+    ulong getExecutionTime();
+
+    /**
+     * Returns the total number of tasks computed by the application.
+     * MUST be called after terminate().
+     * @return The total number of tasks computed by the application.
+     * Is computed as the sum of tasks executed from the first call 
+     * of begin() to the last call of end().
+     */
+    unsigned long long getTotalTasks();
 };
 
 class Monitor{

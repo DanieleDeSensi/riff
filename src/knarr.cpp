@@ -98,7 +98,7 @@ void* applicationSupportThread(void* data){
 Application::Application(const std::string& channelName, size_t numThreads,
                          Aggregator* aggregator):
 	    _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-	    _started(false), _aggregator(aggregator){
+	    _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -109,7 +109,7 @@ Application::Application(const std::string& channelName, size_t numThreads,
 Application::Application(nn::socket& socket, uint chid, size_t numThreads,
                          Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
-        _aggregator(aggregator){
+        _aggregator(aggregator), _executionTime(0), _totalTasks(0){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
@@ -138,15 +138,11 @@ ulong Application::getCurrentTimeNs(){
 }
 
 void Application::begin(uint threadId){
-    bool toMemset = false;
     if(_threadData.find(threadId) == _threadData.end()){
         _threadData[threadId] = ThreadData();
-        toMemset = true;
     }
     ThreadData& tData = _threadData[threadId];
-    if(toMemset){
-        memset(&tData, 0, sizeof(ThreadData));
-    }
+
     ulong now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
@@ -187,15 +183,10 @@ void Application::begin(uint threadId){
 
 void Application::storeCustomValue(size_t index, double value, uint threadId){
     if(index < KNARR_MAX_CUSTOM_FIELDS){
-        bool toMemset = false;
         if(_threadData.find(threadId) == _threadData.end()){
             _threadData[threadId] = ThreadData();
-            toMemset = true;
         }
         ThreadData& tData = _threadData[threadId];
-        if(toMemset){
-            memset(&tData, 0, sizeof(ThreadData));
-        }
         tData.sample.customFields[index] = value;
     }else{
         throw std::runtime_error("Custom value index out of bound. Please "
@@ -222,10 +213,9 @@ void Application::terminate(){
     pthread_join(_supportTid, NULL);
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
-    ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max();
-    unsigned long long totalTasks = 0; 
+    ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max(); 
     for(std::pair<const uint, ThreadData>& td : _threadData){
-        totalTasks += td.second.totalTasks;
+        _totalTasks += td.second.totalTasks;
         if(td.second.firstBegin < firstBegin){
             firstBegin = td.second.firstBegin;
         }
@@ -233,14 +223,23 @@ void Application::terminate(){
             lastEnd = td.second.lastEnd;
         }
     }
-    msg.payload.time = (lastEnd - firstBegin) / 1000000.0; // Must be in ms
-    msg.payload.totalTasks = totalTasks;
+    _executionTime = (lastEnd - firstBegin) / 1000000.0; // Must be in ms
+    msg.payload.time = _executionTime;
+    msg.payload.totalTasks = _totalTasks;
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed
     // the monitor could never receive the stop).
     r = _channelRef.recv(&msg, sizeof(msg), 0);
     assert(r == sizeof(msg));
+}
+
+ulong Application::getExecutionTime(){
+    return _executionTime;
+}
+
+unsigned long long Application::getTotalTasks(){
+    return _totalTasks;
 }
 
 Monitor::Monitor(const std::string& channelName):

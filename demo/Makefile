@@ -1,4 +1,4 @@
-TARGET = demo
+TARGET = demo stresstest
 
 .PHONY: all clean cleanall
 
