@@ -1,6 +1,6 @@
 export CC                    = gcc
 export CXX                   = g++
-export OPTIMIZE_FLAGS        = -O3
+export OPTIMIZE_FLAGS        = -O3 -DLEVEL1_DCACHE_LINESIZE=`getconf LEVEL1_DCACHE_LINESIZE`
 export CXXFLAGS              = $(COVERAGE_FLAGS) -Wall -pedantic --std=c++11
 export LDLIBS                = $(COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lknarr -lanl
 

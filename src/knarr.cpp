@@ -24,17 +24,32 @@ using namespace std;
 
 namespace knarr{
 
+//  Windows
+#ifdef _WIN32 
+#include <intrin.h>
+uint64_t rdtsc(){
+    return __rdtsc();
+}
+//  Linux/GCC
+#else
+uint64_t rdtsc(){
+    unsigned int lo,hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#endif
+
 void* applicationSupportThread(void* data){
     Application* application = (Application*) data;
-    std::map<uint, ulong> lastStoredEnd;
+    std::vector<ulong> lastStoredEnd;
     // Init lastStoredEnd
-    for(std::pair<const uint, ThreadData>& curr : application->_threadData){
-        lastStoredEnd[curr.first] = 0;
+    for(size_t i = 0; i < application->_threadData.size(); i++){
+        lastStoredEnd.push_back(0);
     }
 
     while(!application->_supportStop){
         Message recvdMsg;
-        int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), NN_DONTWAIT);
+        int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), 0);
         if(res == sizeof(recvdMsg)){
             assert(recvdMsg.type == MESSAGE_TYPE_SAMPLE_REQ);
             // Prepare response message.
@@ -42,15 +57,16 @@ void* applicationSupportThread(void* data){
             msg.type = MESSAGE_TYPE_SAMPLE_RES;
             msg.payload.sample = ApplicationSample(); // Set sample to all zeros
 
-            // Add the samples of the other threads.
-            for(std::pair<const uint, ThreadData>& toAdd : application->_threadData){
-                ApplicationSample& sample = toAdd.second.sample;
-                if(toAdd.second.lastEnd != lastStoredEnd[toAdd.first]){
-                    ulong totalTime = (sample.latency + toAdd.second.idleTime);
+            // Add the samples of all the threads.
+            for(size_t i = 0; i < application->_threadData.size(); i++){
+                ThreadData& toAdd = application->_threadData[i];
+                ApplicationSample& sample = toAdd.sample;
+                if(toAdd.lastEnd != lastStoredEnd[i]){
+                    ulong totalTime = (sample.latency + toAdd.idleTime);
                     sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
                     sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                     sample.latency /= sample.numTasks;
-                    lastStoredEnd[toAdd.first] = toAdd.second.lastEnd;
+                    lastStoredEnd[i] = toAdd.lastEnd;
                 }else{
                     // No updates performed since the last one.
                     sample.bandwidth = 0;
@@ -72,8 +88,8 @@ void* applicationSupportThread(void* data){
                 customVec.reserve(application->_threadData.size());
                 for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
                     customVec.clear();
-                    for(std::pair<const uint, ThreadData>& td : application->_threadData){
-                        customVec.push_back(td.second.sample.customFields[i]);
+                    for(ThreadData& td : application->_threadData){
+                        customVec.push_back(td.sample.customFields[i]);
                     }
                     msg.payload.sample.customFields[i] = application->_aggregator->aggregate(i, customVec);
                 }
@@ -83,12 +99,10 @@ void* applicationSupportThread(void* data){
             application->_channelRef.send(&msg, sizeof(msg), 0);
             // Tell all threads to clear their sample since current one have
             // been already sent.
-            for(std::pair<const uint, ThreadData>& toClean : application->_threadData){
-                toClean.second.clean = true;
+            for(ThreadData& toClean : application->_threadData){
+                toClean.clean = true;
             }
-        }else if(res == -1 && errno != EAGAIN){
-            throw std::runtime_error("Unexpected error on recv");
-        }else if(res != -1){
+        }else if(res == -1){
             throw std::runtime_error("Received less bytes than expected.");
         }
     }
@@ -103,6 +117,8 @@ Application::Application(const std::string& channelName, size_t numThreads,
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
+    _threadData.resize(numThreads);
+    // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
 
@@ -112,6 +128,8 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
         _aggregator(aggregator), _executionTime(0), _totalTasks(0){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
+    _threadData.resize(numThreads);
+    // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
 
@@ -131,18 +149,21 @@ void Application::notifyStart(){
 }
 
 ulong Application::getCurrentTimeNs(){
+#ifdef KNARR_NS_PER_TICK 
+    return rdtsc() / KNARR_NS_PER_TICK;
+#else
     struct timespec tp;
     int r = clock_gettime(CLOCK_MONOTONIC, &tp);
     assert(!r);
     return tp.tv_sec * 1.0e9 + tp.tv_nsec;
+#endif
 }
 
 void Application::begin(uint threadId){
-    if(_threadData.find(threadId) == _threadData.end()){
-        _threadData[threadId] = ThreadData();
+    if(threadId > _threadData.size()){
+        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
     ThreadData& tData = _threadData[threadId];
-
     ulong now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
@@ -167,7 +188,6 @@ void Application::begin(uint threadId){
         }
         ++tData.sample.numTasks;
         ++tData.totalTasks;
-        tData.computeStart = now;
 
         // It may seem stupid to clean things after they have just been set,
         // but it is better to do not move earlier the following code.
@@ -176,16 +196,15 @@ void Application::begin(uint threadId){
             // Reset fields
             tData.reset();
         }
-    }else{
-        tData.computeStart = now;
     }
+    tData.computeStart = now;
 }
 
 void Application::storeCustomValue(size_t index, double value, uint threadId){
+    if(threadId > _threadData.size()){
+        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
+    }
     if(index < KNARR_MAX_CUSTOM_FIELDS){
-        if(_threadData.find(threadId) == _threadData.end()){
-            _threadData[threadId] = ThreadData();
-        }
         ThreadData& tData = _threadData[threadId];
         tData.sample.customFields[index] = value;
     }else{
@@ -195,17 +214,21 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
 }
 
 void Application::end(uint threadId){
+    if(threadId > _threadData.size()){
+        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
+    }
     if(!_started){
         throw std::runtime_error("end() called without begin().");
     }
+    ThreadData& tData = _threadData[threadId];
     ulong now = getCurrentTimeNs();
-    _threadData[threadId].rcvStart = now;
-    if(_threadData[threadId].computeStart){
-        double newLatency = (_threadData[threadId].rcvStart - 
-                             _threadData[threadId].computeStart);
-        _threadData[threadId].sample.latency += newLatency;
+    tData.rcvStart = now;
+    if(tData.computeStart){
+        double newLatency = (tData.rcvStart - 
+                             tData.computeStart);
+        tData.sample.latency += newLatency;
     }
-    _threadData[threadId].lastEnd = now;
+    tData.lastEnd = now;
 }
 
 void Application::terminate(){
@@ -214,13 +237,13 @@ void Application::terminate(){
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
     ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max(); 
-    for(std::pair<const uint, ThreadData>& td : _threadData){
-        _totalTasks += td.second.totalTasks;
-        if(td.second.firstBegin < firstBegin){
-            firstBegin = td.second.firstBegin;
+    for(ThreadData& td : _threadData){
+        _totalTasks += td.totalTasks;
+        if(td.firstBegin < firstBegin){
+            firstBegin = td.firstBegin;
         }
-        if(td.second.lastEnd > lastEnd){
-            lastEnd = td.second.lastEnd;
+        if(td.lastEnd > lastEnd){
+            lastEnd = td.lastEnd;
         }
     }
     _executionTime = (lastEnd - firstBegin) / 1000000.0; // Must be in ms

@@ -8,7 +8,6 @@
 #include <pthread.h>
 #include <iostream>
 #include <string>
-#include <map>
 #include <vector>
 #include <limits>
 
@@ -248,8 +247,12 @@ public:
     virtual double aggregate(size_t index, const std::vector<double>& customValues) = 0;
 };
 
+#ifndef LEVEL1_DCACHE_LINESIZE
+#define LEVEL1_DCACHE_LINESIZE 64
+#endif
+
 typedef struct ThreadData{
-    ApplicationSample sample;
+    ApplicationSample sample __attribute__((aligned(LEVEL1_DCACHE_LINESIZE)));
     ulong rcvStart;
     ulong computeStart;
     ulong idleTime;
@@ -257,6 +260,7 @@ typedef struct ThreadData{
     ulong lastEnd;
     unsigned long long totalTasks;
     bool clean;
+    char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), totalTasks(0), clean(false){;}
@@ -281,7 +285,7 @@ private:
     pthread_mutex_t _mutex;
     pthread_t _supportTid;
     bool _supportStop;
-    std::map<uint, ThreadData> _threadData;
+    std::vector<ThreadData> _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
 
@@ -321,8 +325,10 @@ public:
      * This function must be called at each loop iteration when the computation
      * part of the loop begins.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). It can be any number univocally
-     *        identifying the thread calling this function.
+     *        (e.g. inside a parallel loop). It must be a number univocally
+     *        identifying the thread calling this function and in
+     *        the range [0, n[, where n is the number of threads specified
+     *        in the constructor.
      */
     void begin(uint threadId = 0);
 
@@ -332,8 +338,10 @@ public:
      * @param index The index of the value [0, KNARR_MAX_CUSTOM_FIELDS[
      * @param value The value.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). It can be any number univocally
-     *        identifying the thread calling this function.
+     *        (e.g. inside a parallel loop). It must be a number univocally
+     *        identifying the thread calling this function and in
+     *        the range [0, n[, where n is the number of threads specified
+     *        in the constructor.
      */
     void storeCustomValue(size_t index, double value, uint threadId = 0);
 
@@ -341,8 +349,10 @@ public:
      * This function must be called at each loop iteration when the computation
      * part of the loop ends.
      * @param threadId Must be specified when is called by multiple threads
-     *        (e.g. inside a parallel loop). It can be any number univocally
-     *        identifying the thread calling this function.
+     *        (e.g. inside a parallel loop). It must be a number univocally
+     *        identifying the thread calling this function and in
+     *        the range [0, n[, where n is the number of threads specified
+     *        in the constructor.
      */
     void end(uint threadId = 0);
 
