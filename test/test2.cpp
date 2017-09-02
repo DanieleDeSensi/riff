@@ -36,12 +36,19 @@ int main(int argc, char** argv){
         //std::cout << "[[Monitor]]: Application started." << std::endl;
         knarr::ApplicationSample sample;
         usleep(MONITORING_INTERVAL);
+        bool badTasks = false;
+        double expectedTasks = 0;
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
 
+            if(badTasks){
+                std::cerr << "Expected tasks: " << expectedTasks <<
+                 " Actual tasks: " << sample.numTasks << std::endl;
+                return -1;
+            }
             double expectedLatency = LATENCY*1000; // To nanoseconds
             double expectedUtilization = ((double)LATENCY / ((double) (LATENCY))) * 100;
-            double expectedTasks = (MONITORING_INTERVAL / ((double)(LATENCY))) * NUM_THREADS;
+            expectedTasks = (MONITORING_INTERVAL / ((double)(LATENCY))) * NUM_THREADS;
             if(expectedTasks < 1){expectedTasks = 1;}
             if(abs(expectedLatency - sample.latency)/(double) expectedLatency > TOLERANCE){
                 std::cerr << "Expected latency: " << expectedLatency <<
@@ -54,9 +61,10 @@ int main(int argc, char** argv){
                 return -1;
             }
             if(abs(expectedTasks - sample.numTasks)/(double) expectedTasks > TOLERANCE){
-                std::cerr << "Expected tasks: " << expectedTasks <<
-                             " Actual tasks: " << sample.numTasks << std::endl;
-                return -1;
+                // It is possible that the number of tasks is different
+                // for the last iteration. To be sure that this is 
+                // the last one, we defer the check later.
+                badTasks = true;
             }
             usleep(MONITORING_INTERVAL);
         }

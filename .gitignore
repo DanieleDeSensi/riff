@@ -1,4 +1,6 @@
 cppcheck-report.xml
+src/ticksPerNs
+src/ticksPerNs.o
 src/knarr.o
 src/libknarr.a
 test/test1
