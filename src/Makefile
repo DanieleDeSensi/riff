@@ -1,10 +1,14 @@
 .PHONY = all lib
-OBJS = knarr.o
+OBJS = knarr.o ticksPerNs.o
 
 all: 
+	$(MAKE) ticksPerNs
+	./build_archdata.sh
 	$(MAKE) -C external
 	$(MAKE) lib
 
+%: %.cpp 
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -o $@ $< 
 %.o: %.cpp *.hpp
 	$(CXX) $(CXXFLAGS) $(INCS) $(OPTIMIZE_FLAGS) -c -o $@ $<
 lib: $(OBJS)

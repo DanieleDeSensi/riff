@@ -1,3 +1,12 @@
+/*
+ * This file is part of knarr
+ *
+ * (c) 2016- Daniele De Sensi (d.desensi.software@gmail.com)
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 #include "external/cppnanomsg/nn.hpp"
 
 #include "knarr.hpp"
@@ -23,21 +32,6 @@ using namespace std;
 #endif
 
 namespace knarr{
-
-//  Windows
-#ifdef _WIN32 
-#include <intrin.h>
-uint64_t rdtsc(){
-    return __rdtsc();
-}
-//  Linux/GCC
-#else
-uint64_t rdtsc(){
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return ((uint64_t)hi << 32) | lo;
-}
-#endif
 
 void* applicationSupportThread(void* data){
     Application* application = (Application*) data;

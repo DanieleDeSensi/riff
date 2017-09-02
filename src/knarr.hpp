@@ -1,6 +1,16 @@
+/*
+ * This file is part of knarr
+ *
+ * (c) 2016- Daniele De Sensi (d.desensi.software@gmail.com)
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 #ifndef KNARR_HPP_
 #define KNARR_HPP_
 
+#include "archdata.hpp"
 #include "external/cppnanomsg/nn.hpp"
 #include "external/nanomsg/src/pair.h"
 
@@ -10,6 +20,7 @@
 #include <string>
 #include <vector>
 #include <limits>
+#include <string.h>
 
 #define KNARR_MAX_CUSTOM_FIELDS 4
 
@@ -263,7 +274,9 @@ typedef struct ThreadData{
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
-                 lastEnd(0), totalTasks(0), clean(false){;}
+                 lastEnd(0), totalTasks(0), clean(false){
+        memset(&padding, 0, sizeof(padding));
+    }
 
     void reset(){
         sample = ApplicationSample();
@@ -415,6 +428,21 @@ public:
      */
     unsigned long long getTotalTasks();
 };
+
+//  Windows
+#ifdef _WIN32 
+#include <intrin.h>
+inline uint64_t rdtsc(){
+    return __rdtsc();
+}
+//  Linux/GCC
+#else
+inline uint64_t rdtsc(){
+    unsigned int lo,hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#endif
 
 } // End namespace
 
