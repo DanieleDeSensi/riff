@@ -34,12 +34,7 @@ using namespace std;
 namespace knarr{
 
 void* applicationSupportThread(void* data){
-    Application* application = (Application*) data;
-    std::vector<ulong> lastStoredEnd;
-    // Init lastStoredEnd
-    for(size_t i = 0; i < application->_threadData.size(); i++){
-        lastStoredEnd.push_back(0);
-    }
+    Application* application = static_cast<Application*>(data);
 
     while(!application->_supportStop){
         Message recvdMsg;
@@ -52,30 +47,48 @@ void* applicationSupportThread(void* data){
             msg.payload.sample = ApplicationSample(); // Set sample to all zeros
 
             // Add the samples of all the threads.
+            size_t updatedSamples = 0;
             for(size_t i = 0; i < application->_threadData.size(); i++){
                 ThreadData& toAdd = application->_threadData[i];
-                ApplicationSample& sample = toAdd.sample;
-                if(toAdd.lastEnd != lastStoredEnd[i]){
-                    ulong totalTime = (sample.latency + toAdd.idleTime);
-                    sample.bandwidth = sample.numTasks / (totalTime/1000000000.0); // From tasks/ns to tasks/sec
+                ApplicationSample sample = toAdd.sample;
+                const ApplicationSample& chkSample = toAdd.sample;
+                const ThreadData& chkToAdd = application->_threadData[i];
+                
+                // Wait for thread to store a sample
+                // (unless quickReply was set to true).                
+                do{                    
+                    sched_yield();
+                }while((!chkSample.latency || !chkToAdd.idleTime) && 
+                       !application->_quickReply && 
+                       !application->_supportStop);
+
+                ulong totalTime = (sample.latency + toAdd.idleTime);
+                if(totalTime){
+                    sample.bandwidth = sample.numTasks / (totalTime / 1000000000.0); // From tasks/ns to tasks/sec
                     sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                     sample.latency /= sample.numTasks;
-                    lastStoredEnd[i] = toAdd.lastEnd;
-                }else{
-                    // No updates performed since the last one.
-                    sample.bandwidth = 0;
-                    sample.loadPercentage = 0;
-                    sample.numTasks = 0;
-                    sample.latency = std::numeric_limits<double>::max();
-                }
+                    ++updatedSamples;
 
-                msg.payload.sample.bandwidth += sample.bandwidth;
-                msg.payload.sample.latency += sample.latency;
-                msg.payload.sample.loadPercentage += sample.loadPercentage;
-                msg.payload.sample.numTasks += sample.numTasks;
+                    msg.payload.sample.bandwidth += sample.bandwidth;
+                    msg.payload.sample.latency += sample.latency;
+                    msg.payload.sample.loadPercentage += sample.loadPercentage;
+                    msg.payload.sample.numTasks += sample.numTasks;
+                }
             }
-            msg.payload.sample.loadPercentage /= application->_threadData.size();
-            msg.payload.sample.latency /= application->_threadData.size();
+
+            // If at least one thread is progressing.
+            if(updatedSamples){
+                msg.payload.sample.loadPercentage /= updatedSamples;
+                msg.payload.sample.latency /= updatedSamples;
+                std::cout << "Sending: " << msg.payload.sample << std::endl;
+            }else{
+                msg.payload.sample.bandwidth = 0;
+                msg.payload.sample.latency = std::numeric_limits<double>::max();
+                msg.payload.sample.loadPercentage = 0;
+                msg.payload.sample.numTasks = 0;
+                std::cout << "no updates, Sending: " << msg.payload.sample << std::endl;
+            }
+            
             // Aggregate custom values.
             if(application->_aggregator){
                 std::vector<double> customVec;
@@ -100,13 +113,14 @@ void* applicationSupportThread(void* data){
             throw std::runtime_error("Received less bytes than expected.");
         }
     }
-	return NULL;
+    return NULL;
 }
 
 Application::Application(const std::string& channelName, size_t numThreads,
-                         Aggregator* aggregator):
-	    _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-	    _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0){
+                         bool quickReply, Aggregator* aggregator):
+        _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
+        _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0),
+        _quickReply(quickReply){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -117,9 +131,10 @@ Application::Application(const std::string& channelName, size_t numThreads,
 }
 
 Application::Application(nn::socket& socket, uint chid, size_t numThreads,
-                         Aggregator* aggregator):
+                         bool quickReply, Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
-        _aggregator(aggregator), _executionTime(0), _totalTasks(0){
+        _aggregator(aggregator), _executionTime(0), _totalTasks(0),
+        _quickReply(quickReply){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     _threadData.resize(numThreads);
@@ -153,11 +168,43 @@ ulong Application::getCurrentTimeNs(){
 #endif
 }
 
+void Application::updateSamplingLength(ThreadData& tData){
+    if(tData.sample.numTasks){
+        double latencyNs = tData.sample.latency / tData.sample.numTasks;
+        double latencyMs = latencyNs / 1000000.0;
+        tData.samplingLength = std::ceil(KNARR_SAMPLING_LENGTH_MS / latencyMs);
+    }
+}
+
 void Application::begin(uint threadId){
     if(threadId > _threadData.size()){
         throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
     ThreadData& tData = _threadData[threadId];
+
+    tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
+    
+    // Skip
+    if(tData.currentSample && tData.currentSample != 1){
+        return;
+    }
+    
+    // To collect a sample, we need to execute begin two 
+    // times in a row, i.e.
+    //     ... begin(); end(); begin(); ...
+    //
+    // Otherwise it would not be possible to collect the
+    // idleTime.
+    //
+    // When tData.currentSample == 0:
+    //      - We start the timer for recording latency 
+    //        (tData.computeStart = now).
+    // When tData.currentSample == 1:
+    //      - We record idleTime (since the timer has)
+    //        been started by end() with currentSample == 0.
+    // The only exception is for samplingLength == 1, since
+    // in this case currentSample is always 0.
+
     ulong now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
@@ -171,18 +218,25 @@ void Application::begin(uint threadId){
 
     }
     if(!tData.firstBegin){
-		tData.firstBegin = now;
+        tData.firstBegin = now;
     }
-    tData.lastEnd = now;
-    if(tData.computeStart){
-        if(tData.rcvStart){
-            tData.idleTime += (now - tData.rcvStart);
-        }else{
-            tData.sample.latency += (now - tData.computeStart);
-        }
-        ++tData.sample.numTasks;
-        ++tData.totalTasks;
 
+    if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
+        tData.sample.numTasks += tData.samplingLength;
+        tData.totalTasks += tData.samplingLength;
+
+        // If samplingLength is different from 1, we need
+        // to add 1 to the tasks count, 
+        // since a sample contains 2 begin() calls.
+        if(tData.samplingLength != 1){
+            ++tData.sample.numTasks;
+            ++tData.totalTasks;
+        }
+        // ATTENTION: IdleTime must be the last thing to set.
+        tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
+#ifdef KNARR_SAMPLING_LENGTH_MS
+        updateSamplingLength(tData);
+#endif
         // It may seem stupid to clean things after they have just been set,
         // but it is better to do not move earlier the following code.
         if(tData.clean){
@@ -215,13 +269,17 @@ void Application::end(uint threadId){
         throw std::runtime_error("end() called without begin().");
     }
     ThreadData& tData = _threadData[threadId];
+    // Skip
+    if(tData.currentSample){
+        return;
+    }
+    // We only store samples if tData.currentSample == 0
     ulong now = getCurrentTimeNs();
     tData.rcvStart = now;
-    if(tData.computeStart){
-        double newLatency = (tData.rcvStart - 
-                             tData.computeStart);
-        tData.sample.latency += newLatency;
-    }
+    double newLatency = (tData.rcvStart - tData.computeStart);
+    // If we perform sampling, we assume that all the other samples
+    // different from the one recorded had the same latency.
+    tData.sample.latency += (newLatency * tData.samplingLength); 
     tData.lastEnd = now;
 }
 

@@ -24,6 +24,22 @@
 
 #define KNARR_MAX_CUSTOM_FIELDS 4
 
+#ifndef KNARR_DEFAULT_SAMPLING_LENGTH
+// Never skips any begin() call.
+#define KNARR_DEFAULT_SAMPLING_LENGTH 1
+#endif
+
+// Represents the minimum length in milliseconds
+// between two successive begin() calls. If begin()
+// is called more frequently than this value,
+// intermediate calls are skipped. This time length
+// is automatically translated in samples number,
+// and will override the KNARR_DEFAULT_SAMPLING_LENGTH.
+// If you want to keep a fixed sampling, equal to
+// the value specified by KNARR_DEFAULT_SAMPLING_LENGTH,
+// please comment the following macro.
+#define KNARR_SAMPLING_LENGTH_MS 100.0
+
 namespace knarr{
 
 typedef enum MessageType{
@@ -258,10 +274,6 @@ public:
     virtual double aggregate(size_t index, const std::vector<double>& customValues) = 0;
 };
 
-#ifndef LEVEL1_DCACHE_LINESIZE
-#define LEVEL1_DCACHE_LINESIZE 64
-#endif
-
 typedef struct ThreadData{
     ApplicationSample sample __attribute__((aligned(LEVEL1_DCACHE_LINESIZE)));
     ulong rcvStart;
@@ -271,10 +283,15 @@ typedef struct ThreadData{
     ulong lastEnd;
     unsigned long long totalTasks;
     bool clean;
+    ulong samplingLength;
+    ulong currentSample;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
-                 lastEnd(0), totalTasks(0), clean(false){
+                 lastEnd(0), totalTasks(0), clean(false),
+                 samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
+                 // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
+                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1){
         memset(&padding, 0, sizeof(padding));
     }
 
@@ -301,21 +318,29 @@ private:
     std::vector<ThreadData> _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
+    bool _quickReply;
 
     // We are sure it is called by at most one thread.
     void notifyStart();
 
     ulong getCurrentTimeNs();
+
+    void updateSamplingLength(ThreadData& td);
 public:
     /**
      * Constructs this object.
      * @param channelName The name of the channel.
      * @param numThreads The number of threads which will concurrently use
      *        this library.
+     * @param quickReply If true, we will answer the monitor as soon as
+     *        a request is received. If false, we will not answer until
+     *        at least one sample per thread has been stored.
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
-    Application(const std::string& channelName, size_t numThreads = 1,
+    Application(const std::string& channelName, 
+                size_t numThreads = 1,
+                bool quickReply = true,
                 Aggregator* aggregator = NULL);
 
     /**
@@ -324,10 +349,15 @@ public:
      * @param chid The channel identifier.
      * @param numThreads The number of threads which will concurrently use
      *        this library.
+     * @param quickReply If true, we will answer the monitor as soon as
+     *        a request is received. If false, we will not answer until
+     *        at least one sample per thread has been stored.
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
-    Application(nn::socket& socket, uint chid, size_t numThreads = 1,
+    Application(nn::socket& socket, uint chid, 
+                size_t numThreads = 1,
+                bool quickReply = true,
                 Aggregator* aggregator = NULL);
     ~Application();
 

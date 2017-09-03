@@ -11,7 +11,7 @@
 #define CHNAME "ipc:///tmp/demo.ipc"
 
 #define ITERATIONS 10000
-#define NUM_THREADS 2
+#define NUM_THREADS 1
 #ifndef TOLERANCE
 #define TOLERANCE 0.1 // Between 0 and 1
 #endif
@@ -41,25 +41,16 @@ int main(int argc, char** argv){
     }
     if(atoi(argv[1]) == 0){
         knarr::Monitor mon(CHNAME);
-        //std::cout << "[[Monitor]]: Waiting application start." << std::endl;
+        std::cout << "[[Monitor]]: Waiting application start." << std::endl;
         mon.waitStart();
-        //std::cout << "[[Monitor]]: Application started." << std::endl;
+        std::cout << "[[Monitor]]: Application started." << std::endl;
         knarr::ApplicationSample sample;
         usleep(MONITORING_INTERVAL);
-        bool badTasks = false;
-        double expectedTasks = 0;
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
 
-            if(badTasks){
-                std::cerr << "Expected tasks: " << expectedTasks <<
-                             " Actual tasks: " << sample.numTasks << std::endl;
-                return -1;
-            }
             double expectedLatency = LATENCY*1000; // To nanoseconds
             double expectedUtilization = ((double)LATENCY / ((double) (IDLE_TIME + LATENCY))) * 100;
-            expectedTasks = (MONITORING_INTERVAL / ((double)(IDLE_TIME + LATENCY))) * NUM_THREADS;
-            if(expectedTasks < 1){expectedTasks = 1;}
             if(abs(expectedLatency - sample.latency)/(double) expectedLatency > TOLERANCE){
                 std::cerr << "Expected latency: " << expectedLatency <<
                              " Actual latency: " << sample.latency << std::endl;
@@ -70,12 +61,10 @@ int main(int argc, char** argv){
                              " Actual utilization: " << sample.loadPercentage << std::endl;
                 return -1;
             }
-            if(abs(expectedTasks - sample.numTasks)/(double) expectedTasks > TOLERANCE){
-                // It is possible that the number of tasks is different
-                // for the last iteration. To be sure that this is 
-                // the last one, we defer the check later.
-                badTasks = true;                
-            }
+            // We do not check anymore the number of task since when sampling is applied,
+            // it is higly variable, i.e. we could miss a bunch of tasks.
+            // Bandwidth and latency must still be correct nevertheless.
+
             // We need enough long monitoring interval to store at least once
             // per thread each custom value.
             if(MONITORING_INTERVAL > NUM_THREADS*(IDLE_TIME+LATENCY)){
@@ -105,7 +94,7 @@ int main(int argc, char** argv){
         // Application. Use omp just to test the correctness when multiple
         // threads call begin/end.
         omp_set_num_threads(NUM_THREADS);
-        knarr::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
+        knarr::Application app(CHNAME, NUM_THREADS, false, new DemoAggregator());
         //std::cout << "[[Application]] Created." << std::endl;
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){
