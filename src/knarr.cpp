@@ -33,6 +33,17 @@ using namespace std;
 
 namespace knarr{
 
+ulong getCurrentTimeNs(){
+#ifdef KNARR_NS_PER_TICK 
+    return rdtsc() / KNARR_NS_PER_TICK;
+#else
+    struct timespec tp;
+    int r = clock_gettime(CLOCK_MONOTONIC, &tp);
+    assert(!r);
+    return tp.tv_sec * 1.0e9 + tp.tv_nsec;
+#endif
+}
+
 void* applicationSupportThread(void* data){
     Application* application = static_cast<Application*>(data);
 
@@ -49,19 +60,23 @@ void* applicationSupportThread(void* data){
             // Add the samples of all the threads.
             size_t updatedSamples = 0;
             for(size_t i = 0; i < application->_threadData.size(); i++){
-                ThreadData& toAdd = application->_threadData[i];
-                ApplicationSample sample = toAdd.sample;
+                ThreadData& toAdd = application->_threadData[i];                
                 const ApplicationSample& chkSample = toAdd.sample;
                 const ThreadData& chkToAdd = application->_threadData[i];
                 
                 // Wait for thread to store a sample
                 // (unless quickReply was set to true).                
                 do{                    
-                    sched_yield();
+                    uint samplingLengthMs = application->_threadData.size();
+#ifdef KNARR_SAMPLING_LENGTH_MS
+                    samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
+#endif
+                    usleep((1000 * samplingLengthMs) / application->_threadData.size());
                 }while((!chkSample.latency || !chkToAdd.idleTime) && 
                        !application->_quickReply && 
                        !application->_supportStop);
 
+                ApplicationSample sample = toAdd.sample;
                 ulong totalTime = (sample.latency + toAdd.idleTime);
                 if(totalTime){
                     sample.bandwidth = sample.numTasks / (totalTime / 1000000000.0); // From tasks/ns to tasks/sec
@@ -78,15 +93,28 @@ void* applicationSupportThread(void* data){
 
             // If at least one thread is progressing.
             if(updatedSamples){
+#ifdef KNARR_ADJUST_BANDWIDTH
+                if(updatedSamples != application->_threadData.size()){
+                    // If quickReply is not specified, we wait to collect data from 
+                    // all the threads and this branch is never executed
+                    assert(application->_quickReply);
+                    msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (application->_threadData.size() - updatedSamples);
+                }
+#endif
                 msg.payload.sample.loadPercentage /= updatedSamples;
                 msg.payload.sample.latency /= updatedSamples;
-                std::cout << "Sending: " << msg.payload.sample << std::endl;
             }else{
+                // If quickReply is not specified, we wait to collect data from 
+                // all the threads and this branch is never executed
+                assert(application->_quickReply);
+#ifdef KNARR_ADJUST_BANDWIDTH
+                throw std::runtime_error("KNARR_ADJUST_BANDWIDTH was specified but no samples have been collected at this iteration.");
+#endif
+
                 msg.payload.sample.bandwidth = 0;
                 msg.payload.sample.latency = std::numeric_limits<double>::max();
                 msg.payload.sample.loadPercentage = 0;
                 msg.payload.sample.numTasks = 0;
-                std::cout << "no updates, Sending: " << msg.payload.sample << std::endl;
             }
             
             // Aggregate custom values.
@@ -157,23 +185,14 @@ void Application::notifyStart(){
     assert(r == sizeof(msg));
 }
 
-ulong Application::getCurrentTimeNs(){
-#ifdef KNARR_NS_PER_TICK 
-    return rdtsc() / KNARR_NS_PER_TICK;
-#else
-    struct timespec tp;
-    int r = clock_gettime(CLOCK_MONOTONIC, &tp);
-    assert(!r);
-    return tp.tv_sec * 1.0e9 + tp.tv_nsec;
-#endif
-}
-
 void Application::updateSamplingLength(ThreadData& tData){
+#ifdef KNARR_SAMPLING_LENGTH_MS
     if(tData.sample.numTasks){
         double latencyNs = tData.sample.latency / tData.sample.numTasks;
         double latencyMs = latencyNs / 1000000.0;
-        tData.samplingLength = std::ceil(KNARR_SAMPLING_LENGTH_MS / latencyMs);
+        tData.samplingLength = std::ceil((double) KNARR_SAMPLING_LENGTH_MS / latencyMs);
     }
+#endif
 }
 
 void Application::begin(uint threadId){
@@ -234,7 +253,7 @@ void Application::begin(uint threadId){
         }
         // ATTENTION: IdleTime must be the last thing to set.
         tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
-#ifdef KNARR_SAMPLING_LENGTH_MS
+#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
         updateSamplingLength(tData);
 #endif
         // It may seem stupid to clean things after they have just been set,

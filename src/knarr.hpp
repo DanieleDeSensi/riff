@@ -37,10 +37,24 @@
 // and will override the KNARR_DEFAULT_SAMPLING_LENGTH.
 // If you want to keep a fixed sampling, equal to
 // the value specified by KNARR_DEFAULT_SAMPLING_LENGTH,
-// please comment the following macro.
-#define KNARR_SAMPLING_LENGTH_MS 100.0
+// please set the following macro to 0.
+#ifndef KNARR_SAMPLING_LENGTH_MS
+#define KNARR_SAMPLING_LENGTH_MS 1
+#endif
+
+// If the following macro is defined and if quickReply is
+// set to true, for the threads that didn't yet stored
+// their sample, we estimate the bandwidth to be
+// the same of the other threads. This macro
+// must be specified if you want to provide a consistent view                                                                                                                                             
+// of the application bandwidth. If the macro is not specified,                                                                                                                                         
+// bandwidth will change accordingly to how many threads                                                                                                                                       
+// already stored their samples.        
+#define KNARR_ADJUST_BANDWIDTH
 
 namespace knarr{
+
+ulong getCurrentTimeNs();
 
 typedef enum MessageType{
     MESSAGE_TYPE_START = 0,
@@ -322,8 +336,6 @@ private:
 
     // We are sure it is called by at most one thread.
     void notifyStart();
-
-    ulong getCurrentTimeNs();
 
     void updateSamplingLength(ThreadData& td);
 public:
