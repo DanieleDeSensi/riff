@@ -69,7 +69,7 @@ void* applicationSupportThread(void* data){
                 do{                    
                     uint samplingLengthMs = application->_threadData.size();
 #ifdef KNARR_SAMPLING_LENGTH_MS
-                    samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
+                    uint samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
 #endif
                     usleep((1000 * samplingLengthMs) / application->_threadData.size());
                 }while((!chkSample.latency || !chkToAdd.idleTime) && 
