@@ -7,6 +7,7 @@
  * file that was distributed with this source code.
  */
 
+#include <assert.h>
 #include <iostream>
 #include <sstream>
 #include <cmath>

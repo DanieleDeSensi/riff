@@ -67,9 +67,10 @@ void* applicationSupportThread(void* data){
                 // Wait for thread to store a sample
                 // (unless quickReply was set to true).                
                 do{                    
-                    uint samplingLengthMs = application->_threadData.size();
 #ifdef KNARR_SAMPLING_LENGTH_MS
                     uint samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
+#else
+                    uint samplingLengthMs = application->_threadData.size();
 #endif
                     usleep((1000 * samplingLengthMs) / application->_threadData.size());
                 }while((!chkSample.latency || !chkToAdd.idleTime) && 
