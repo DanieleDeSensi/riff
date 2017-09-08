@@ -108,10 +108,6 @@ void* applicationSupportThread(void* data){
                 // If quickReply is not specified, we wait to collect data from 
                 // all the threads and this branch is never executed
                 assert(application->_quickReply);
-#ifdef KNARR_ADJUST_BANDWIDTH
-                throw std::runtime_error("KNARR_ADJUST_BANDWIDTH was specified but no samples have been collected at this iteration.");
-#endif
-
                 msg.payload.sample.bandwidth = 0;
                 msg.payload.sample.latency = std::numeric_limits<double>::max();
                 msg.payload.sample.loadPercentage = 0;
@@ -187,11 +183,15 @@ void Application::notifyStart(){
 }
 
 void Application::updateSamplingLength(ThreadData& tData){
-#ifdef KNARR_SAMPLING_LENGTH_MS
+#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
     if(tData.sample.numTasks){
         double latencyNs = tData.sample.latency / tData.sample.numTasks;
         double latencyMs = latencyNs / 1000000.0;
-        tData.samplingLength = std::ceil((double) KNARR_SAMPLING_LENGTH_MS / latencyMs);
+        if(latencyMs){
+            tData.samplingLength = std::ceil((double) KNARR_SAMPLING_LENGTH_MS / latencyMs);
+        }else{
+            tData.samplingLength = 1;
+        }
     }
 #endif
 }
@@ -245,13 +245,6 @@ void Application::begin(uint threadId){
         tData.sample.numTasks += tData.samplingLength;
         tData.totalTasks += tData.samplingLength;
 
-        // If samplingLength is different from 1, we need
-        // to add 1 to the tasks count, 
-        // since a sample contains 2 begin() calls.
-        if(tData.samplingLength != 1){
-            ++tData.sample.numTasks;
-            ++tData.totalTasks;
-        }
         // ATTENTION: IdleTime must be the last thing to set.
         tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
 #if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0

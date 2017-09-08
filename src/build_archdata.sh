@@ -15,12 +15,19 @@ echo "#ifndef KNARR_ARCHDATA_HPP_" >> archdata.hpp
 echo "#define KNARR_ARCHDATA_HPP_" >> archdata.hpp
 
 # Cache line size
-echo "#define LEVEL1_DCACHE_LINESIZE "`getconf LEVEL1_DCACHE_LINESIZE` >> archdata.hpp
+CACHE_LINESIZE=$(cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size)
+if [ "$?" -ne "0" ] || [ "$CACHE_LINESIZE" -eq "0" ]; then
+    CACHE_LINESIZE=$(getconf LEVEL1_DCACHE_LINESIZE)
+    if [ "$CACHE_LINESIZE" -eq "0" ]; then
+        CACHE_LINESIZE=64
+    fi
+fi
+echo "#define LEVEL1_DCACHE_LINESIZE "$CACHE_LINESIZE >> archdata.hpp
 # Check if constant_tsc is present
 CONSTANT_TSC=$(grep -o '^flags\b.*: .*\bconstant_tsc\b' /proc/cpuinfo | tail -1 | wc -w)
 if [ "$CONSTANT_TSC" -gt "0" ]; then
-	VALUE=$(./ticksPerNs)
-   echo "#define KNARR_NS_PER_TICK "$VALUE >> archdata.hpp
+    VALUE=$(./ticksPerNs)
+    echo "#define KNARR_NS_PER_TICK "$VALUE >> archdata.hpp
 fi
 
 echo "#endif // KNARR_ARCHDATA_HPP_" >> archdata.hpp

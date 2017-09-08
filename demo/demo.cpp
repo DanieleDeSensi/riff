@@ -57,7 +57,8 @@ int main(int argc, char** argv){
             std::cout << "[[Application]] Computing." << std::endl;
             app.begin(threadId);
             // Simulates the computation latency
-            usleep(LATENCY);
+            unsigned long start = knarr::getCurrentTimeNs();
+            do{;}while(knarr::getCurrentTimeNs() - start < LATENCY*1000.0);
             std::cout << "[[Application]] Computed." << std::endl;
             app.storeCustomValue(0, CUSTOM_VALUE_0, threadId);
             app.storeCustomValue(1, CUSTOM_VALUE_1, threadId);
