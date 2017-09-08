@@ -77,7 +77,14 @@ void* applicationSupportThread(void* data){
                        !application->_quickReply && 
                        !application->_supportStop);
 
+#ifdef KNARR_ENABLE_LOCKING
+                while(toAdd.lock->test_and_set(std::memory_order_acquire));
                 ApplicationSample sample = toAdd.sample;
+                toAdd.lock->clear(std::memory_order_release);
+#else
+                ApplicationSample sample = toAdd.sample;
+#endif
+
                 ulong totalTime = (sample.latency + toAdd.idleTime);
                 if(totalTime){
                     sample.bandwidth = sample.numTasks / (totalTime / 1000000000.0); // From tasks/ns to tasks/sec
@@ -150,7 +157,9 @@ Application::Application(const std::string& channelName, size_t numThreads,
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
-    _threadData.resize(numThreads);
+    for(size_t i = 0; i < numThreads; i++){
+        _threadData.emplace_back();
+    }
     // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
@@ -162,7 +171,9 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
         _quickReply(quickReply){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
-    _threadData.resize(numThreads);
+    for(size_t i = 0; i < numThreads; i++){
+        _threadData.emplace_back();
+    }
     // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
@@ -241,6 +252,12 @@ void Application::begin(uint threadId){
         tData.firstBegin = now;
     }
 
+#ifdef KNARR_ENABLE_LOCKING
+    if(tData.samplingLength > 1 && tData.currentSample == 0){
+        while(tData.lock->test_and_set(std::memory_order_acquire));
+    }
+#endif
+
     if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
         tData.sample.numTasks += tData.samplingLength;
         tData.totalTasks += tData.samplingLength;
@@ -249,6 +266,11 @@ void Application::begin(uint threadId){
         tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
 #if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
         updateSamplingLength(tData);
+#endif
+#ifdef KNARR_ENABLE_LOCKING
+        if(tData.samplingLength > 1){
+            tData.lock->clear(std::memory_order_release);
+        }
 #endif
         // It may seem stupid to clean things after they have just been set,
         // but it is better to do not move earlier the following code.

@@ -15,6 +15,9 @@
 #include "external/nanomsg/src/pair.h"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
+#include <thread>
 #include <pthread.h>
 #include <iostream>
 #include <string>
@@ -299,14 +302,20 @@ typedef struct ThreadData{
     bool clean;
     ulong samplingLength;
     ulong currentSample;
+    std::shared_ptr<std::atomic_flag> lock;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), totalTasks(0), clean(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
-                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1){
+                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1),
+                lock(std::make_shared<std::atomic_flag>()){
         memset(&padding, 0, sizeof(padding));
+    }
+
+    ~ThreadData(){
+        ;
     }
 
     void reset(){
