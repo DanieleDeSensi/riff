@@ -15,9 +15,6 @@
 #include "external/nanomsg/src/pair.h"
 
 #include <algorithm>
-#include <atomic>
-#include <memory>
-#include <thread>
 #include <pthread.h>
 #include <iostream>
 #include <string>
@@ -57,7 +54,7 @@
 
 namespace knarr{
 
-ulong getCurrentTimeNs();
+unsigned long long getCurrentTimeNs();
 
 typedef enum MessageType{
     MESSAGE_TYPE_START = 0,
@@ -293,34 +290,27 @@ public:
 
 typedef struct ThreadData{
     ApplicationSample sample __attribute__((aligned(LEVEL1_DCACHE_LINESIZE)));
-    ulong rcvStart;
-    ulong computeStart;
-    ulong idleTime;
+    unsigned long long rcvStart;
+    unsigned long long computeStart;
+    unsigned long long idleTime;
     ulong firstBegin;
     ulong lastEnd;
     unsigned long long totalTasks;
     bool clean;
     ulong samplingLength;
     ulong currentSample;
-    std::shared_ptr<std::atomic_flag> lock;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), totalTasks(0), clean(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
-                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1),
-                lock(std::make_shared<std::atomic_flag>()){
+                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1){
         memset(&padding, 0, sizeof(padding));
-    }
-
-    ~ThreadData(){
-        ;
     }
 
     void reset(){
         sample = ApplicationSample();
-        rcvStart = 0;
         idleTime = 0;
     }
 }ThreadData;
@@ -328,7 +318,10 @@ typedef struct ThreadData{
 void* applicationSupportThread(void*);
 
 class Application{
+    friend bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples);
     friend void* applicationSupportThread(void*);
+    friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples);
+
 private:
     nn::socket* _channel;
     nn::socket& _channelRef;
