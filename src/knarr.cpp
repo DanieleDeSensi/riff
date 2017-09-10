@@ -106,7 +106,13 @@ void* applicationSupportThread(void* data){
                     waitSampleStore(numThreads);
                 }
 
+                if(application->_useLocks){
+                    while(toAdd.lock->test_and_set(std::memory_order_acquire));
+                }
                 ApplicationSample sample = toAdd.sample;
+                if(application->_useLocks){
+                    toAdd.lock->clear(std::memory_order_release);
+                }
                 // If we required a cleaning and it has not yet 
                 // been done (clean = true), we skip this thread.
                 if(sample.latency && toAdd.idleTime && !toAdd.clean){
@@ -178,7 +184,7 @@ Application::Application(const std::string& channelName, size_t numThreads,
                          bool quickReply, Aggregator* aggregator):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
         _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0),
-        _quickReply(quickReply){
+        _quickReply(quickReply), _useLocks(true){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -192,7 +198,7 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
                          bool quickReply, Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
         _aggregator(aggregator), _executionTime(0), _totalTasks(0),
-        _quickReply(quickReply){
+        _quickReply(quickReply), _useLocks(true){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     _threadData.resize(numThreads);
@@ -274,23 +280,15 @@ void Application::begin(uint threadId){
         tData.firstBegin = now;
     }
 
-    if(tData.currentSample == 0 || tData.samplingLength == 1){
-        if(tData.clean){
-            tData.clean = false;
-            // Reset fields
-            tData.reset();
-        }
-    }
-
     if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
-        tData.sample.numTasks += tData.samplingLength;
-        tData.totalTasks += tData.samplingLength;
-
         // ATTENTION: IdleTime must be the last thing to set.
         tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
 #if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
         updateSamplingLength(tData);
 #endif
+        if(_useLocks){
+            tData.lock->clear(std::memory_order_release);
+        }
     }
     tData.computeStart = now;
 }
@@ -322,19 +320,28 @@ void Application::end(uint threadId){
     }
     // We only store samples if tData.currentSample == 0
     ulong now = getCurrentTimeNs();
-    tData.rcvStart = now;
-    double newLatency = (tData.rcvStart - tData.computeStart);
-    // If we perform sampling, we assume that all the other samples
-    // different from the one recorded had the same latency.
-    tData.sample.latency += (newLatency * tData.samplingLength); 
+    tData.rcvStart = now;    
+    if(_useLocks){
+        while(tData.lock->test_and_set(std::memory_order_acquire));
+    }
+    if(tData.clean){
+        tData.clean = false;
+        // Reset fields
+        tData.reset();
+        // If a reset has been done, we do not store latency
+        // since computeStart may refer to a previous configuration.
+    }else{
+        // If we perform sampling, we assume that all the other samples
+        // different from the one recorded had the same latency.
+        double newLatency = (tData.rcvStart - tData.computeStart);
+        tData.sample.latency += (newLatency * tData.samplingLength); 
+        tData.sample.numTasks += tData.samplingLength;
+    }
+    tData.totalTasks += tData.samplingLength;
     tData.lastEnd = now;
 }
 
 void Application::terminate(){
-    _supportStop = true;
-    pthread_join(_supportTid, NULL);
-    Message msg;
-    msg.type = MESSAGE_TYPE_STOP;
     ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max(); 
     for(ThreadData& td : _threadData){
         _totalTasks += td.totalTasks;
@@ -344,8 +351,18 @@ void Application::terminate(){
         if(td.lastEnd > lastEnd){
             lastEnd = td.lastEnd;
         }
+        // Unlock all the locks (they were locked with end() and so never unlocked)
+        if(_useLocks){
+            td.lock->clear(std::memory_order_release);
+        }
     }
     _executionTime = (lastEnd - firstBegin) / 1000000.0; // Must be in ms
+
+    _supportStop = true;
+    pthread_join(_supportTid, NULL);
+    
+    Message msg;
+    msg.type = MESSAGE_TYPE_STOP;
     msg.payload.time = _executionTime;
     msg.payload.totalTasks = _totalTasks;
     int r = _channelRef.send(&msg, sizeof(msg), 0);

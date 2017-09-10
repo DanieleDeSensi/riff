@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <pthread.h>
+#include <memory>
+#include <atomic>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -299,13 +301,15 @@ typedef struct ThreadData{
     bool clean;
     ulong samplingLength;
     ulong currentSample;
+    std::shared_ptr<std::atomic_flag> lock;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), totalTasks(0), clean(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
-                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1){
+                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1),
+                 lock(std::make_shared<std::atomic_flag>()){
         memset(&padding, 0, sizeof(padding));
     }
 
@@ -335,6 +339,13 @@ private:
     ulong _executionTime;
     unsigned long long _totalTasks;
     bool _quickReply;
+    bool _useLocks;
+    // TODO set useLocks = false when we have many iterations per second.
+    // We can do it in that case since even if we have wrong counts
+    // due to race conditions this would not be a problem.
+    // It is a problem with few iterations per second since even
+    // counting one task less/more can significantly change
+    // the bandwidth/latency accounting.
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -391,7 +402,7 @@ public:
 
     /**
      * This function stores a custom value in the sample. It should be called
-     * before 'end()'.
+     * after 'end()'.
      * @param index The index of the value [0, KNARR_MAX_CUSTOM_FIELDS[
      * @param value The value.
      * @param threadId Must be specified when is called by multiple threads
