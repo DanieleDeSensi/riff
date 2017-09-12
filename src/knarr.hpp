@@ -54,6 +54,32 @@
 // already stored their samples.        
 #define KNARR_ADJUST_BANDWIDTH
 
+// When sampling is applied, the latency estimation
+// (and the idle time/utilization estimation) could be 
+// wrong. This means that we could pick latency sample which are
+// far from the average (lower/higher), thus since we assume that
+// latency is more or less constant, in very skewed situations
+// our estimation could be completly wrong. This can 
+// be detected by knarr by comparing the actual elapsed time
+// with the time computed as the sum of the latency and idle time.
+// When these values are different, it means that either the 
+// latency or the idle time have been not correctly estimated
+// (due to skewness). This can only happen when sampling is applied.
+// The following macro represents the maximum percentage of difference
+// between the estimated time and the actual time we are willing to tolerate.
+// If the estimated time (computed from latency and idle time)
+// is more than KNARR_LATENCY_CONSISTENCY_THRESHOLD % different from the
+// actual time, we will mark latency and utilization as
+// inconsistent. Bandwidth computation and tasks count are never
+// affected by inconsistencies.
+#ifndef KNARR_LATENCY_CONSISTENCY_THRESHOLD
+#define KNARR_LATENCY_CONSISTENCY_THRESHOLD 5
+#endif
+
+// This value is used to mark an inconsistent
+// sample.
+#define KNARR_VALUE_INCONSISTENT -1.0
+
 namespace knarr{
 
 unsigned long long getCurrentTimeNs();
@@ -295,8 +321,9 @@ typedef struct ThreadData{
     unsigned long long rcvStart;
     unsigned long long computeStart;
     unsigned long long idleTime;
-    ulong firstBegin;
-    ulong lastEnd;
+    unsigned long long firstBegin;
+    unsigned long long lastEnd;
+    unsigned long long sampleStartTime;
     unsigned long long totalTasks;
     bool clean;
     ulong samplingLength;
@@ -305,7 +332,7 @@ typedef struct ThreadData{
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
-                 lastEnd(0), totalTasks(0), clean(false),
+                 lastEnd(0), sampleStartTime(0), totalTasks(0), clean(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
                  currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1),

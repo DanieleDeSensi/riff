@@ -45,7 +45,7 @@ unsigned long long getCurrentTimeNs(){
 }
 
 static inline void waitSampleStore(size_t numThreads){
-#ifdef KNARR_SAMPLING_LENGTH_MS
+#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
     uint samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
 #else
     uint samplingLengthMs = numThreads;
@@ -80,6 +80,18 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
     return false;
 }
 
+// We do not use abs because they are both unsigned
+// if we do abs(x - y) and x is smaller than y, the temporary
+// result (before applying abs) cannot be negative so it will wrap
+// and assume a huge value.
+static inline unsigned long long absDiff(unsigned long long x, unsigned long long y){
+    if(x > y){
+        return x - y;
+    }else{
+        return y - x;
+    }
+}
+
 void* applicationSupportThread(void* data){
     Application* application = static_cast<Application*>(data);
 
@@ -94,7 +106,7 @@ void* applicationSupportThread(void* data){
             msg.payload.sample = ApplicationSample(); // Set sample to all zeros
 
             // Add the samples of all the threads.
-            size_t updatedSamples = 0;
+            size_t updatedSamples = 0, inconsistentSamples = 0;
             std::vector<size_t> toClean; // Identifiers of threads to be cleaned.
             size_t numThreads = application->_threadData.size();
             for(size_t i = 0; i < numThreads; i++){
@@ -116,17 +128,30 @@ void* applicationSupportThread(void* data){
                 // If we required a cleaning and it has not yet 
                 // been done (clean = true), we skip this thread.
                 if(sample.latency && toAdd.idleTime && !toAdd.clean){
-                    ulong totalTime = (sample.latency + toAdd.idleTime);
+                    unsigned long long totalTime = toAdd.lastEnd - toAdd.sampleStartTime;
+                    unsigned long long totalTimeEstimated = (sample.latency + toAdd.idleTime);
+                    // If the gap between real total time and the one estimated with
+                    // latency and idle time is greater than a threshold, idleTime and
+                    // latency are not reliable.
+                    if(((absDiff(totalTime, totalTimeEstimated) /
+                         (double) totalTime) * 100.0) > KNARR_LATENCY_CONSISTENCY_THRESHOLD){
+#if !defined(KNARR_SAMPLING_LENGTH_MS) || KNARR_SAMPLING_LENGTH_MS == 0
+                        throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
+#else
+                        ++inconsistentSamples;
+#endif
+                    }else{
+                        sample.loadPercentage = (sample.latency / totalTime) * 100.0;
+                        sample.latency /= sample.numTasks;
+                        msg.payload.sample.loadPercentage += sample.loadPercentage;
+                        msg.payload.sample.latency += sample.latency;
+                    }
                     sample.bandwidth = sample.numTasks / (totalTime / 1000000000.0); // From tasks/ns to tasks/sec
-                    sample.loadPercentage = (sample.latency / totalTime) * 100.0;
-                    sample.latency /= sample.numTasks;
+                    msg.payload.sample.bandwidth += sample.bandwidth;
+                    msg.payload.sample.numTasks += sample.numTasks;
+
                     ++updatedSamples;
                     toClean.push_back(i);
-
-                    msg.payload.sample.bandwidth += sample.bandwidth;
-                    msg.payload.sample.latency += sample.latency;
-                    msg.payload.sample.loadPercentage += sample.loadPercentage;
-                    msg.payload.sample.numTasks += sample.numTasks;
                 }
             }
 
@@ -140,8 +165,14 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (application->_threadData.size() - updatedSamples);
                 }
 #endif
-                msg.payload.sample.loadPercentage /= updatedSamples;
-                msg.payload.sample.latency /= updatedSamples;
+                // If we collected only inconsistent samples, we mark latency and load as inconsistent.
+                if(inconsistentSamples == updatedSamples){
+                    msg.payload.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
+                    msg.payload.sample.latency = KNARR_VALUE_INCONSISTENT;
+                }else{
+                    msg.payload.sample.loadPercentage /= updatedSamples;
+                    msg.payload.sample.latency /= updatedSamples;
+                }
             }else{
                 // If quickReply is not specified, we wait to collect data from 
                 // all the threads and this branch is never executed
@@ -264,7 +295,7 @@ void Application::begin(uint threadId){
     // The only exception is for samplingLength == 1, since
     // in this case currentSample is always 0.
 
-    ulong now = getCurrentTimeNs();
+    unsigned long long now = getCurrentTimeNs();
     if(!_started){
         pthread_mutex_lock(&_mutex);
         // This awful double check is done to avoid locking the flag
@@ -319,7 +350,7 @@ void Application::end(uint threadId){
         return;
     }
     // We only store samples if tData.currentSample == 0
-    ulong now = getCurrentTimeNs();
+    unsigned long long now = getCurrentTimeNs();
     tData.rcvStart = now;    
     if(_useLocks){
         while(tData.lock->test_and_set(std::memory_order_acquire));
@@ -328,21 +359,28 @@ void Application::end(uint threadId){
         tData.clean = false;
         // Reset fields
         tData.reset();
+        tData.sampleStartTime = now;
         // If a reset has been done, we do not store latency
         // since computeStart may refer to a previous configuration.
     }else{
         // If we perform sampling, we assume that all the other samples
         // different from the one recorded had the same latency.
         double newLatency = (tData.rcvStart - tData.computeStart);
-        tData.sample.latency += (newLatency * tData.samplingLength); 
+        tData.sample.latency += (newLatency * tData.samplingLength);
         tData.sample.numTasks += tData.samplingLength;
     }
     tData.totalTasks += tData.samplingLength;
     tData.lastEnd = now;
+    // When application begins it has never been cleaned,
+    // so we need to manually set sampleStartTime here
+    // for the first sample (i.e. when sampleStartTime is zero)
+    if(!tData.sampleStartTime){
+        tData.sampleStartTime = now;
+    }
 }
 
 void Application::terminate(){
-    ulong lastEnd = 0, firstBegin = std::numeric_limits<ulong>::max(); 
+    unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max(); 
     for(ThreadData& td : _threadData){
         _totalTasks += td.totalTasks;
         if(td.firstBegin < firstBegin){
