@@ -33,7 +33,7 @@ using namespace std;
 
 namespace knarr{
 
-    unsigned long long getCurrentTimeNs(){
+unsigned long long getCurrentTimeNs(){
 #ifdef KNARR_NS_PER_TICK 
     return rdtsc() / KNARR_NS_PER_TICK;
 #else
@@ -160,7 +160,9 @@ void* applicationSupportThread(void* data){
                    updatedSamples != application->_threadData.size()){
                     // This can only happen if we didn't need to store
                     // data from all the threads
-                    assert(application->_configuration.threadsNeeded != KNARR_THREADS_NEEDED_ALL);
+                    if(!application->_supportStop){
+                        assert(application->_configuration.threadsNeeded != KNARR_THREADS_NEEDED_ALL);
+                    }
                     msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (application->_threadData.size() - updatedSamples);
                 }
 
@@ -174,9 +176,11 @@ void* applicationSupportThread(void* data){
                 }
             }else{
                 // This can only happens if the threadsNeeded is NONE
-                assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE);
+                if(!application->_supportStop){
+                    assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE);
+                }
                 msg.payload.sample.bandwidth = 0;
-                msg.payload.sample.latency = std::numeric_limits<double>::max();
+                msg.payload.sample.latency = std::numeric_limits<double>::max(); //TODO NO, mettere una marca per prendere il valore dello step precedente.
                 msg.payload.sample.loadPercentage = 0;
                 msg.payload.sample.numTasks = 0;
             }
@@ -281,64 +285,6 @@ void Application::setConfigurationBatch(ThreadsNeeded threadsNeeded){
     _configuration = configuration;
 }
 
-void Application::begin(uint threadId){
-    if(threadId > _threadData.size()){
-        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
-    }
-    ThreadData& tData = _threadData[threadId];
-
-    tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
-    
-    // Skip
-    if(tData.currentSample && tData.currentSample != 1){
-        return;
-    }
-    
-    // To collect a sample, we need to execute begin two 
-    // times in a row, i.e.
-    //     ... begin(); end(); begin(); ...
-    //
-    // Otherwise it would not be possible to collect the
-    // idleTime.
-    //
-    // When tData.currentSample == 0:
-    //      - We start the timer for recording latency 
-    //        (tData.computeStart = now).
-    // When tData.currentSample == 1:
-    //      - We record idleTime (since the timer has)
-    //        been started by end() with currentSample == 0.
-    // The only exception is for samplingLength == 1, since
-    // in this case currentSample is always 0.
-
-    unsigned long long now = getCurrentTimeNs();
-    if(!_started){
-        pthread_mutex_lock(&_mutex);
-        // This awful double check is done to avoid locking the flag
-        // every time (this code is executed at most once).
-        if(!_started){
-            notifyStart();
-            _started = true;
-        }
-        pthread_mutex_unlock(&_mutex);
-
-    }
-    if(!tData.firstBegin){
-        tData.firstBegin = now;
-    }
-
-    if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
-        // ATTENTION: IdleTime must be the last thing to set.
-        tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
-        if(_configuration.samplingLengthMs){
-            updateSamplingLength(tData);
-        }
-        if(_configuration.preciseCount){
-            tData.lock->clear(std::memory_order_release);
-        }
-    }
-    tData.computeStart = now;
-}
-
 void Application::storeCustomValue(size_t index, double value, uint threadId){
     if(threadId > _threadData.size()){
         throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
@@ -352,51 +298,15 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
     }
 }
 
-void Application::end(uint threadId){
-    if(threadId > _threadData.size()){
-        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
-    }
-    if(!_started){
-        throw std::runtime_error("end() called without begin().");
-    }
-    ThreadData& tData = _threadData[threadId];
-    // Skip
-    if(tData.currentSample){
-        return;
-    }
-    // We only store samples if tData.currentSample == 0
-    unsigned long long now = getCurrentTimeNs();
-    tData.rcvStart = now;    
-    if(_configuration.preciseCount){
-        while(tData.lock->test_and_set(std::memory_order_acquire));
-    }
-    if(tData.clean){
-        tData.clean = false;
-        // Reset fields
-        tData.reset();
-        tData.sampleStartTime = now;
-        // If a reset has been done, we do not store latency
-        // since computeStart may refer to a previous configuration.
-    }else{
-        // If we perform sampling, we assume that all the other samples
-        // different from the one recorded had the same latency.
-        double newLatency = (tData.rcvStart - tData.computeStart);
-        tData.sample.latency += (newLatency * tData.samplingLength);
-        tData.sample.numTasks += tData.samplingLength;
-    }
-    tData.totalTasks += tData.samplingLength;
-    tData.lastEnd = now;
-    // When application begins it has never been cleaned,
-    // so we need to manually set sampleStartTime here
-    // for the first sample (i.e. when sampleStartTime is zero)
-    if(!tData.sampleStartTime){
-        tData.sampleStartTime = now;
-    }
-}
-
 void Application::terminate(){
     unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max(); 
     for(ThreadData& td : _threadData){
+        // If I was doing sampling, I could have spurious
+        // tasks that I didn't record. For this reason,
+        // I record them now.
+        if(td.samplingLength > 1){
+            td.totalTasks += td.currentSample;    
+        }
         _totalTasks += td.totalTasks;
         if(td.firstBegin < firstBegin){
             firstBegin = td.firstBegin;
@@ -416,8 +326,8 @@ void Application::terminate(){
     
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
-    msg.payload.time = _executionTime;
-    msg.payload.totalTasks = _totalTasks;
+    msg.payload.summary.time = _executionTime;
+    msg.payload.summary.totalTasks = _totalTasks;
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert (r == sizeof(msg));
     // Wait for ack before leaving (otherwise if object is destroyed
@@ -472,8 +382,8 @@ bool Monitor::getSample(ApplicationSample& sample){
         sample = m.payload.sample;
         return true;
     }else if(m.type == MESSAGE_TYPE_STOP){
-        _executionTime = m.payload.time;
-        _totalTasks = m.payload.totalTasks;
+        _executionTime = m.payload.summary.time;
+        _totalTasks = m.payload.summary.totalTasks;
         // Send ack.
         m.type = MESSAGE_TYPE_STOPACK;
         r = _channelRef.send(&m, sizeof(m), 0);

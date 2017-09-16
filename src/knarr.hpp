@@ -31,8 +31,7 @@
 #define KNARR_DEFAULT_SAMPLING_LENGTH 1
 #endif
 
-// This value is used to mark an inconsistent
-// sample.
+// This value is used to mark an inconsistent value.
 #define KNARR_VALUE_INCONSISTENT -1.0
 
 namespace knarr{
@@ -441,11 +440,12 @@ inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
 }
 
 typedef union Payload{
-    ApplicationSample sample;
-    ulong time;
-    unsigned long long totalTasks;
     pid_t pid;
-
+    ApplicationSample sample;
+    struct{
+        ulong time;
+        unsigned long long totalTasks;
+    }summary;
     Payload(){;}
 }Payload;
 
@@ -599,7 +599,63 @@ public:
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
      */
-    void begin(uint threadId = 0);
+    inline void begin(uint threadId = 0){
+        ThreadData& tData = _threadData[threadId];
+
+        // Equivalent to
+        // tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
+        // but faster.
+        tData.currentSample = (tData.currentSample + 1) == tData.samplingLength ? 0 : tData.currentSample + 1;
+      
+        // Skip
+        if(tData.currentSample && tData.currentSample != 1){
+            return;
+        }
+        
+        // To collect a sample, we need to execute begin two 
+        // times in a row, i.e.
+        //     ... begin(); end(); begin(); ...
+        //
+        // Otherwise it would not be possible to collect the
+        // idleTime.
+        //
+        // When tData.currentSample == 0:
+        //      - We start the timer for recording latency 
+        //        (tData.computeStart = now).
+        // When tData.currentSample == 1:
+        //      - We record idleTime (since the timer has)
+        //        been started by end() with currentSample == 0.
+        // The only exception is for samplingLength == 1, since
+        // in this case currentSample is always 0.
+
+        unsigned long long now = getCurrentTimeNs();
+        if(!_started){
+            pthread_mutex_lock(&_mutex);
+            // This awful double check is done to avoid locking the flag
+            // every time (this code is executed at most once).
+            if(!_started){
+                notifyStart();
+                _started = true;
+            }
+            pthread_mutex_unlock(&_mutex);
+
+        }
+        if(!tData.firstBegin){
+            tData.firstBegin = now;
+        }
+
+        if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
+            // ATTENTION: IdleTime must be the last thing to set.
+            tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
+            if(_configuration.samplingLengthMs){
+                updateSamplingLength(tData);
+            }
+            if(_configuration.preciseCount){
+                tData.lock->clear(std::memory_order_release);
+            }
+        }
+        tData.computeStart = now;
+    }
 
     /**
      * This function stores a custom value in the sample. It should be called
@@ -623,7 +679,41 @@ public:
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
      */
-    void end(uint threadId = 0);
+    inline void end(uint threadId = 0){
+        ThreadData& tData = _threadData[threadId];
+        // Skip
+        if(tData.currentSample){
+            return;
+        }
+        // We only store samples if tData.currentSample == 0
+        unsigned long long now = getCurrentTimeNs();
+        tData.rcvStart = now;    
+        if(_configuration.preciseCount){
+            while(tData.lock->test_and_set(std::memory_order_acquire));
+        }
+        if(tData.clean){
+            tData.clean = false;
+            // Reset fields
+            tData.reset();
+            tData.sampleStartTime = now;
+            // If a reset has been done, we do not store latency
+            // since computeStart may refer to a previous configuration.
+        }else{
+            // If we perform sampling, we assume that all the other samples
+            // different from the one recorded had the same latency.
+            double newLatency = (tData.rcvStart - tData.computeStart);
+            tData.sample.latency += (newLatency * tData.samplingLength);
+            tData.sample.numTasks += tData.samplingLength;
+        }
+        tData.totalTasks += tData.samplingLength;
+        tData.lastEnd = now;
+        // When application begins it has never been cleaned,
+        // so we need to manually set sampleStartTime here
+        // for the first sample (i.e. when sampleStartTime is zero)
+        if(!tData.sampleStartTime){
+            tData.sampleStartTime = now;
+        }
+    }
 
     /**
      * This function must only be called once, when the parallel part
