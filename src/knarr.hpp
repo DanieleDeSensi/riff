@@ -31,56 +31,94 @@
 #define KNARR_DEFAULT_SAMPLING_LENGTH 1
 #endif
 
-// Represents the minimum length in milliseconds
-// between two successive begin() calls. If begin()
-// is called more frequently than this value,
-// intermediate calls are skipped. This time length
-// is automatically translated in samples number,
-// and will override the KNARR_DEFAULT_SAMPLING_LENGTH.
-// If you want to keep a fixed sampling, equal to
-// the value specified by KNARR_DEFAULT_SAMPLING_LENGTH,
-// please set the following macro to 0.
-#ifndef KNARR_SAMPLING_LENGTH_MS
-#define KNARR_SAMPLING_LENGTH_MS 1
-#endif
-
-// If the following macro is defined and if quickReply is
-// set to true, for the threads that didn't yet stored
-// their sample, we estimate the bandwidth to be
-// the same of the other threads. This macro
-// must be specified if you want to provide a consistent view                                                                                                                                             
-// of the application bandwidth. If the macro is not specified,                                                                                                                                         
-// bandwidth will change accordingly to how many threads                                                                                                                                       
-// already stored their samples.        
-#define KNARR_ADJUST_BANDWIDTH
-
-// When sampling is applied, the latency estimation
-// (and the idle time/utilization estimation) could be 
-// wrong. This means that we could pick latency sample which are
-// far from the average (lower/higher), thus since we assume that
-// latency is more or less constant, in very skewed situations
-// our estimation could be completly wrong. This can 
-// be detected by knarr by comparing the actual elapsed time
-// with the time computed as the sum of the latency and idle time.
-// When these values are different, it means that either the 
-// latency or the idle time have been not correctly estimated
-// (due to skewness). This can only happen when sampling is applied.
-// The following macro represents the maximum percentage of difference
-// between the estimated time and the actual time we are willing to tolerate.
-// If the estimated time (computed from latency and idle time)
-// is more than KNARR_LATENCY_CONSISTENCY_THRESHOLD % different from the
-// actual time, we will mark latency and utilization as
-// inconsistent. Bandwidth computation and tasks count are never
-// affected by inconsistencies.
-#ifndef KNARR_LATENCY_CONSISTENCY_THRESHOLD
-#define KNARR_LATENCY_CONSISTENCY_THRESHOLD 5
-#endif
-
 // This value is used to mark an inconsistent
 // sample.
 #define KNARR_VALUE_INCONSISTENT -1.0
 
 namespace knarr{
+
+// Represents the minimum number of
+// threads from which the data must
+// be collected before replying
+// to the monitor requests.
+typedef enum ThreadsNeeded{
+    KNARR_THREADS_NEEDED_NONE = 0, // We can reply even if no threads stored the sample
+    KNARR_THREADS_NEEDED_ONE, // We can reply if at least one thread stored the sample
+    KNARR_THREADS_NEEDED_ALL // We can reply only when all the threads stored the sample
+}ThreadsNeeded;
+
+// Configuration parameters for knarr behaviour
+// when collecting samples. 
+typedef struct ApplicationConfiguration{
+    // Represents the minimum length in milliseconds
+    // between two successive begin() calls. If begin()
+    // is called more frequently than this value,
+    // intermediate calls are skipped. If this value
+    // is set to zero, no calls will be skipped.
+    // [default = 1.0]
+    double samplingLengthMs;
+
+    // Represents the minimum number of
+    // threads from which the data must
+    // be collected before replying
+    // to the monitor requests.
+    // [default = KNARR_THREADS_NEEDED_ALL]
+    ThreadsNeeded threadsNeeded;
+
+    // If true and if threadsNeeded is not KNARR_THREADS_NEEDED_ALL, 
+    // for the threads that didn't yet stored
+    // their sample, we estimate the bandwidth to be
+    // the same of the other threads. This should be set to
+    // true if you want to provide a consistent view
+    // of the application bandwidth. If false,
+    // bandwidth will change accordingly to how many threads
+    // already stored their samples and we would have
+    // fluctuations caused by the way in which data is collected
+    // but not actually present in the application.
+    // [default = true]
+    bool adjustBandwidth;
+
+    // When sampling is applied, the latency estimation
+    // (and the idle time/utilization estimation) could be 
+    // wrong. This means that we could pick latency sample which are
+    // far from the average (lower/higher), thus since we assume that
+    // latency is more or less constant, in very skewed situations
+    // our estimation could be completly wrong. This can 
+    // be detected by knarr by comparing the actual elapsed time
+    // with the time computed as the sum of the latency and idle time.
+    // When these values are different, it means that either the 
+    // latency or the idle time have been not correctly estimated
+    // (due to skewness). This can only happen when sampling is applied.
+    // The following macro represents the maximum percentage of difference
+    // between the estimated time and the actual time we are willing to tolerate.
+    // If the estimated time (computed from latency and idle time)
+    // is more than consistencyThreshold% different from the
+    // actual time, we will mark latency and utilization as
+    // inconsistent. Bandwidth computation and tasks count are never
+    // affected by inconsistencies.
+    // [default = 5.0]
+    double consistencyThreshold;
+
+    // If false, the metrics count could be slightly approximated. This
+    // is not an issue when there are many iterations per second since
+    // the error would just be of few percentage points. 
+    // It is a problem with few iterations per second since even
+    // counting one task less/more can significantly change
+    // the bandwidth/latency accounting. If true the count will be the
+    // exact count. However it could slightly increase the overhead of
+    // the instrumentation. However, if samplingIntervalMs is left to its default
+    // value there should be no significative overhead.
+    // [default = true]
+    bool preciseCount;
+
+    ApplicationConfiguration(){
+        samplingLengthMs = 1.0;
+        threadsNeeded = KNARR_THREADS_NEEDED_ALL;
+        adjustBandwidth = true;
+        consistencyThreshold = 5.0;
+        preciseCount = true;
+    }
+}ApplicationConfiguration;
 
 unsigned long long getCurrentTimeNs();
 
@@ -100,12 +138,16 @@ typedef enum MessageType{
  */
 typedef struct ApplicationSample{
     // The percentage ([0, 100]) of time that the node spent in the computation.
+    // If equal to KNARR_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
+    // knarr configuration.
     double loadPercentage;
 
     // The bandwidth of the application.
     double bandwidth;
 
     // The average latency (nanoseconds).
+    // If equal to KNARR_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
+    // knarr configuration.
     double latency;
 
     // The number of computed tasks.
@@ -148,10 +190,34 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator+=(const ApplicationSample& rhs){
-        loadPercentage += rhs.loadPercentage;
-        bandwidth += rhs.bandwidth;
-        latency += rhs.latency;
-        numTasks += rhs.numTasks;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage += rhs.loadPercentage;
+        }else{
+            loadPercentage = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
+           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth += rhs.bandwidth;
+        }else{
+            bandwidth = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(latency != KNARR_VALUE_INCONSISTENT && 
+           rhs.latency != KNARR_VALUE_INCONSISTENT){
+            latency += rhs.latency;
+        }else{
+            latency = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(numTasks != KNARR_VALUE_INCONSISTENT && 
+           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks += rhs.numTasks;
+        }else{
+            numTasks = KNARR_VALUE_INCONSISTENT;        
+        }
+
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] += rhs.customFields[i];
         }
@@ -159,10 +225,34 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator-=(const ApplicationSample& rhs){
-        loadPercentage -= rhs.loadPercentage;
-        bandwidth -= rhs.bandwidth;
-        latency -= rhs.latency;
-        numTasks -= rhs.numTasks;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage -= rhs.loadPercentage;
+        }else{
+            loadPercentage = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
+           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth -= rhs.bandwidth;
+        }else{
+            bandwidth = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(latency != KNARR_VALUE_INCONSISTENT && 
+           rhs.latency != KNARR_VALUE_INCONSISTENT){
+            latency -= rhs.latency;
+        }else{
+            latency = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(numTasks != KNARR_VALUE_INCONSISTENT && 
+           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks -= rhs.numTasks;
+        }else{
+            numTasks = KNARR_VALUE_INCONSISTENT;        
+        }
+
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] -= rhs.customFields[i];
         }
@@ -170,10 +260,34 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator*=(const ApplicationSample& rhs){
-        loadPercentage *= rhs.loadPercentage;
-        bandwidth *= rhs.bandwidth;
-        latency *= rhs.latency;
-        numTasks *= rhs.numTasks;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage *= rhs.loadPercentage;
+        }else{
+            loadPercentage = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
+           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth *= rhs.bandwidth;
+        }else{
+            bandwidth = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(latency != KNARR_VALUE_INCONSISTENT && 
+           rhs.latency != KNARR_VALUE_INCONSISTENT){
+            latency *= rhs.latency;
+        }else{
+            latency = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(numTasks != KNARR_VALUE_INCONSISTENT && 
+           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks *= rhs.numTasks;
+        }else{
+            numTasks = KNARR_VALUE_INCONSISTENT;        
+        }
+
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= rhs.customFields[i];
         }
@@ -181,10 +295,34 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator/=(const ApplicationSample& rhs){
-        loadPercentage /= rhs.loadPercentage;
-        bandwidth /= rhs.bandwidth;
-        latency /= rhs.latency;
-        numTasks /= rhs.numTasks;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage /= rhs.loadPercentage;
+        }else{
+            loadPercentage = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
+           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth /= rhs.bandwidth;
+        }else{
+            bandwidth = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(latency != KNARR_VALUE_INCONSISTENT && 
+           rhs.latency != KNARR_VALUE_INCONSISTENT){
+            latency /= rhs.latency;
+        }else{
+            latency = KNARR_VALUE_INCONSISTENT;
+        }
+
+        if(numTasks != KNARR_VALUE_INCONSISTENT && 
+           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks /= rhs.numTasks;
+        }else{
+            numTasks = KNARR_VALUE_INCONSISTENT;        
+        }
+
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= rhs.customFields[i];
         }
@@ -192,10 +330,18 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample operator/=(double x){
-        loadPercentage /= x;
-        bandwidth /= x;
-        latency /= x;
-        numTasks /= x;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage /= x;
+        }
+        if(bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth /= x;
+        }
+        if(latency != KNARR_VALUE_INCONSISTENT){
+            latency /= x;
+        }
+        if(numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks /= x;
+        }
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= x;
         }
@@ -203,10 +349,18 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample operator*=(double x){
-        loadPercentage *= x;
-        bandwidth *= x;
-        latency *= x;
-        numTasks *= x;
+        if(loadPercentage != KNARR_VALUE_INCONSISTENT){
+            loadPercentage *= x;
+        }
+        if(bandwidth != KNARR_VALUE_INCONSISTENT){
+            bandwidth *= x;
+        }
+        if(latency != KNARR_VALUE_INCONSISTENT){
+            latency *= x;
+        }
+        if(numTasks != KNARR_VALUE_INCONSISTENT){
+            numTasks *= x;
+        }
         for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= x;
         }
@@ -349,11 +503,12 @@ typedef struct ThreadData{
 void* applicationSupportThread(void*);
 
 class Application{
+    friend void waitSampleStore(Application* application);
     friend bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples);
-    friend void* applicationSupportThread(void*);
     friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples);
-
+    friend void* applicationSupportThread(void*);
 private:
+    ApplicationConfiguration _configuration;
     nn::socket* _channel;
     nn::socket& _channelRef;
     int _chid;
@@ -365,14 +520,6 @@ private:
     std::vector<ThreadData> _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
-    bool _quickReply;
-    bool _useLocks;
-    // TODO set useLocks = false when we have many iterations per second.
-    // We can do it in that case since even if we have wrong counts
-    // due to race conditions this would not be a problem.
-    // It is a problem with few iterations per second since even
-    // counting one task less/more can significantly change
-    // the bandwidth/latency accounting.
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -384,15 +531,11 @@ public:
      * @param channelName The name of the channel.
      * @param numThreads The number of threads which will concurrently use
      *        this library.
-     * @param quickReply If true, we will answer the monitor as soon as
-     *        a request is received. If false, we will not answer until
-     *        at least one sample per thread has been stored.
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
     Application(const std::string& channelName, 
                 size_t numThreads = 1,
-                bool quickReply = true,
                 Aggregator* aggregator = NULL);
 
     /**
@@ -401,20 +544,51 @@ public:
      * @param chid The channel identifier.
      * @param numThreads The number of threads which will concurrently use
      *        this library.
-     * @param quickReply If true, we will answer the monitor as soon as
-     *        a request is received. If false, we will not answer until
-     *        at least one sample per thread has been stored.
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
     Application(nn::socket& socket, uint chid, 
                 size_t numThreads = 1,
-                bool quickReply = true,
                 Aggregator* aggregator = NULL);
+
     ~Application();
 
     Application(const Application& a) = delete;
     Application& operator=(Application const &x) = delete;
+
+    /**
+     * Sets the application configuration.
+     * MUST be called before calling begin() for the first time.
+     * @param configuration The application configuration.
+     **/
+    void setConfiguration(const ApplicationConfiguration& configuration);
+
+    /**
+     * Sets the default application configuration for a streaming application.
+     * It will set:
+     *     - samplingLengthMs = default
+     *     - threadsNeeded = KNARR_THREADS_NEEDED_NONE
+     *     - adjustBandwidth = true
+     *     - consistencyThreshold = default
+     *     - preciseCount = true
+     * MUST be called before calling begin() for the first time.
+     **/
+    void setConfigurationStreaming();
+
+    /**
+     * Sets the default application configuration for a batch application.
+     * It will set:
+     *     - samplingLengthMs = default
+     *     - threadsNeeded = as specified
+     *     - adjustBandwidth = true
+     *     - consistencyThreshold = default
+     *     - preciseCount = true
+     * MUST be called before calling begin() for the first time.
+     * @param threadsNeeded Suggested KNARR_THREADS_NEEDED_ALL when 
+     *                      there are many iterations per second 
+     *                      (> numThreads * 10), KNARR_THREADS_NEEDED_ONE otherwise.
+     **/
+    void setConfigurationBatch(ThreadsNeeded threadsNeeded = KNARR_THREADS_NEEDED_ALL);
     
     /**
      * This function must be called at each loop iteration when the computation

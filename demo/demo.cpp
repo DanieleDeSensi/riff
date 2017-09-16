@@ -46,6 +46,7 @@ int main(int argc, char** argv){
         }
     }else{
         omp_set_num_threads(NUM_THREADS);
+        knarr::ApplicationConfiguration ac;
         knarr::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
         usleep(5000000);
 #pragma omp parallel for

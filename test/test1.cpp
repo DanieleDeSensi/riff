@@ -94,7 +94,7 @@ int main(int argc, char** argv){
         // Application. Use omp just to test the correctness when multiple
         // threads call begin/end.
         omp_set_num_threads(NUM_THREADS);
-        knarr::Application app(CHNAME, NUM_THREADS, false, new DemoAggregator());
+        knarr::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
         //std::cout << "[[Application]] Created." << std::endl;
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){

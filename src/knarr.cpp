@@ -33,7 +33,7 @@ using namespace std;
 
 namespace knarr{
 
-unsigned long long getCurrentTimeNs(){
+    unsigned long long getCurrentTimeNs(){
 #ifdef KNARR_NS_PER_TICK 
     return rdtsc() / KNARR_NS_PER_TICK;
 #else
@@ -44,19 +44,19 @@ unsigned long long getCurrentTimeNs(){
 #endif
 }
 
-static inline void waitSampleStore(size_t numThreads){
-#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
-    uint samplingLengthMs = KNARR_SAMPLING_LENGTH_MS;
-#else
-    uint samplingLengthMs = numThreads;
-#endif
-    usleep((1000 * samplingLengthMs) / numThreads);
+inline void waitSampleStore(Application* application){
+    if(application->_configuration.samplingLengthMs > 0){
+        usleep((1000 * application->_configuration.samplingLengthMs) / application->_threadData.size());
+    }else{
+        usleep(1000);
+    }
 }
 
-static inline bool thisSampleNeeded(size_t numThreads, size_t threadId, size_t updatedSamples){
+inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples){
     // If this is the last thread and there are no 
     // samples stored, then we need this sample.
-    return ((threadId ==  numThreads - 1) && !updatedSamples);
+    return ((threadId == application->_threadData.size() - 1) && !updatedSamples && 
+            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE);
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples){
@@ -64,14 +64,15 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
     const ApplicationSample& chkSample = chkToAdd.sample;
 
     if(chkSample.latency == 0 || chkToAdd.idleTime == 0 || chkToAdd.clean){
-        if(thisSampleNeeded(application->_threadData.size(), threadId, updatedSamples) &&
+        if(thisSampleNeeded(application, threadId, updatedSamples) &&
            !application->_supportStop){
             return true;
         }
 
-        // If quickReply was specified or if application finished,
+        // If we don't need to wait for thread sample,
         // stop waiting.
-        if(application->_quickReply || 
+        if(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE || 
+           (application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE && updatedSamples >= 1) || 
            application->_supportStop){
             return false;
         }
@@ -112,17 +113,16 @@ void* applicationSupportThread(void* data){
             for(size_t i = 0; i < numThreads; i++){
                 ThreadData& toAdd = application->_threadData[i];                                
                 
-                // Wait for thread to store a sample
-                // (unless quickReply was set to true).                
+                // If needed, wait for thread to store a sample.                
                 while(keepWaitingSample(application, i, updatedSamples)){
-                    waitSampleStore(numThreads);
+                    waitSampleStore(application);
                 }
 
-                if(application->_useLocks){
+                if(application->_configuration.preciseCount){
                     while(toAdd.lock->test_and_set(std::memory_order_acquire));
                 }
                 ApplicationSample sample = toAdd.sample;
-                if(application->_useLocks){
+                if(application->_configuration.preciseCount){
                     toAdd.lock->clear(std::memory_order_release);
                 }
                 // If we required a cleaning and it has not yet 
@@ -134,12 +134,11 @@ void* applicationSupportThread(void* data){
                     // latency and idle time is greater than a threshold, idleTime and
                     // latency are not reliable.
                     if(((absDiff(totalTime, totalTimeEstimated) /
-                         (double) totalTime) * 100.0) > KNARR_LATENCY_CONSISTENCY_THRESHOLD){
-#if !defined(KNARR_SAMPLING_LENGTH_MS) || KNARR_SAMPLING_LENGTH_MS == 0
-                        throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
-#else
+                         (double) totalTime) * 100.0) > application->_configuration.consistencyThreshold){
+                        if(!application->_configuration.samplingLengthMs){
+                            throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
+                        }
                         ++inconsistentSamples;
-#endif
                     }else{
                         sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                         sample.latency /= sample.numTasks;
@@ -157,14 +156,14 @@ void* applicationSupportThread(void* data){
 
             // If at least one thread is progressing.
             if(updatedSamples){
-#ifdef KNARR_ADJUST_BANDWIDTH
-                if(updatedSamples != application->_threadData.size()){
-                    // If quickReply is not specified, we wait to collect data from 
-                    // all the threads and this branch is never executed
-                    assert(application->_quickReply);
+                if(application->_configuration.adjustBandwidth && 
+                   updatedSamples != application->_threadData.size()){
+                    // This can only happen if we didn't need to store
+                    // data from all the threads
+                    assert(application->_configuration.threadsNeeded != KNARR_THREADS_NEEDED_ALL);
                     msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (application->_threadData.size() - updatedSamples);
                 }
-#endif
+
                 // If we collected only inconsistent samples, we mark latency and load as inconsistent.
                 if(inconsistentSamples == updatedSamples){
                     msg.payload.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
@@ -174,9 +173,8 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.latency /= updatedSamples;
                 }
             }else{
-                // If quickReply is not specified, we wait to collect data from 
-                // all the threads and this branch is never executed
-                assert(application->_quickReply);
+                // This can only happens if the threadsNeeded is NONE
+                assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE);
                 msg.payload.sample.bandwidth = 0;
                 msg.payload.sample.latency = std::numeric_limits<double>::max();
                 msg.payload.sample.loadPercentage = 0;
@@ -212,10 +210,9 @@ void* applicationSupportThread(void* data){
 }
 
 Application::Application(const std::string& channelName, size_t numThreads,
-                         bool quickReply, Aggregator* aggregator):
+                         Aggregator* aggregator):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-        _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0),
-        _quickReply(quickReply), _useLocks(true){
+        _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -226,16 +223,16 @@ Application::Application(const std::string& channelName, size_t numThreads,
 }
 
 Application::Application(nn::socket& socket, uint chid, size_t numThreads,
-                         bool quickReply, Aggregator* aggregator):
+                         Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
-        _aggregator(aggregator), _executionTime(0), _totalTasks(0),
-        _quickReply(quickReply), _useLocks(true){
+        _aggregator(aggregator), _executionTime(0), _totalTasks(0){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     _threadData.resize(numThreads);
     // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
+
 
 Application::~Application(){
     if(_channel){
@@ -253,17 +250,35 @@ void Application::notifyStart(){
 }
 
 void Application::updateSamplingLength(ThreadData& tData){
-#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
     if(tData.sample.numTasks){
         double latencyNs = tData.sample.latency / tData.sample.numTasks;
         double latencyMs = latencyNs / 1000000.0;
         if(latencyMs){
-            tData.samplingLength = std::ceil((double) KNARR_SAMPLING_LENGTH_MS / latencyMs);
+            tData.samplingLength = std::ceil((double) _configuration.samplingLengthMs / latencyMs);
         }else{
             tData.samplingLength = 1;
         }
     }
-#endif
+}
+
+void Application::setConfiguration(const ApplicationConfiguration& configuration){
+    _configuration = configuration;
+}
+
+void Application::setConfigurationStreaming(){
+    ApplicationConfiguration configuration;
+    configuration.threadsNeeded = KNARR_THREADS_NEEDED_NONE;
+    configuration.adjustBandwidth = true;
+    configuration.preciseCount = true;
+    _configuration = configuration;
+}
+
+void Application::setConfigurationBatch(ThreadsNeeded threadsNeeded){
+    ApplicationConfiguration configuration;
+    configuration.threadsNeeded = threadsNeeded;
+    configuration.adjustBandwidth = true;
+    configuration.preciseCount = true;
+    _configuration = configuration;
 }
 
 void Application::begin(uint threadId){
@@ -314,10 +329,10 @@ void Application::begin(uint threadId){
     if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
         // ATTENTION: IdleTime must be the last thing to set.
         tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
-#if defined(KNARR_SAMPLING_LENGTH_MS) && KNARR_SAMPLING_LENGTH_MS != 0
-        updateSamplingLength(tData);
-#endif
-        if(_useLocks){
+        if(_configuration.samplingLengthMs){
+            updateSamplingLength(tData);
+        }
+        if(_configuration.preciseCount){
             tData.lock->clear(std::memory_order_release);
         }
     }
@@ -352,7 +367,7 @@ void Application::end(uint threadId){
     // We only store samples if tData.currentSample == 0
     unsigned long long now = getCurrentTimeNs();
     tData.rcvStart = now;    
-    if(_useLocks){
+    if(_configuration.preciseCount){
         while(tData.lock->test_and_set(std::memory_order_acquire));
     }
     if(tData.clean){
@@ -390,7 +405,7 @@ void Application::terminate(){
             lastEnd = td.lastEnd;
         }
         // Unlock all the locks (they were locked with end() and so never unlocked)
-        if(_useLocks){
+        if(_configuration.preciseCount){
             td.lock->clear(std::memory_order_release);
         }
     }
