@@ -52,19 +52,25 @@ inline void waitSampleStore(Application* application){
     }
 }
 
-inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples){
+inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
+    // If we need samples from all the threads
+    //       or 
     // If this is the last thread and there are no 
     // samples stored, then we need this sample.
-    return ((threadId == application->_threadData.size() - 1) && !updatedSamples && 
-            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE);
+    return (fromAll ||
+            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ALL || 
+            ((threadId == application->_threadData.size() - 1) && 
+            !updatedSamples && 
+            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE));
 }
 
-inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples){
+inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
     const ThreadData& chkToAdd = application->_threadData[threadId];
     const ApplicationSample& chkSample = chkToAdd.sample;
 
-    if(chkSample.latency == 0 || chkToAdd.idleTime == 0 || chkToAdd.clean){
-        if(thisSampleNeeded(application, threadId, updatedSamples) &&
+    unsigned long long totalTime = chkToAdd.lastEnd - chkToAdd.sampleStartTime;
+    if(totalTime == 0 || chkSample.latency == 0 || chkToAdd.idleTime == 0 || chkToAdd.clean){
+        if(thisSampleNeeded(application, threadId, updatedSamples, fromAll) &&
            !application->_supportStop){
             return true;
         }
@@ -99,6 +105,7 @@ void* applicationSupportThread(void* data){
     while(!application->_supportStop){
         Message recvdMsg;
         int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), 0);
+        bool fromAll = recvdMsg.payload.fromAll;
         if(res == sizeof(recvdMsg)){
             assert(recvdMsg.type == MESSAGE_TYPE_SAMPLE_REQ);
             // Prepare response message.
@@ -114,7 +121,7 @@ void* applicationSupportThread(void* data){
                 ThreadData& toAdd = application->_threadData[i];                                
                 
                 // If needed, wait for thread to store a sample.                
-                while(keepWaitingSample(application, i, updatedSamples)){
+                while(keepWaitingSample(application, i, updatedSamples, fromAll)){
                     waitSampleStore(application);
                 }
 
@@ -127,17 +134,19 @@ void* applicationSupportThread(void* data){
                 }
                 // If we required a cleaning and it has not yet 
                 // been done (clean = true), we skip this thread.
-                if(sample.latency && toAdd.idleTime && !toAdd.clean){
-                    unsigned long long totalTime = toAdd.lastEnd - toAdd.sampleStartTime;
+                unsigned long long totalTime = toAdd.lastEnd - toAdd.sampleStartTime;
+                if(totalTime && sample.latency && toAdd.idleTime && !toAdd.clean){                    
                     unsigned long long totalTimeEstimated = (sample.latency + toAdd.idleTime);
                     // If the gap between real total time and the one estimated with
                     // latency and idle time is greater than a threshold, idleTime and
                     // latency are not reliable.
                     if(((absDiff(totalTime, totalTimeEstimated) /
                          (double) totalTime) * 100.0) > application->_configuration.consistencyThreshold){
+#if defined(KNARR_DEFAULT_SAMPLING_LENGTH) && KNARR_DEFAULT_SAMPLING_LENGTH == 1
                         if(!application->_configuration.samplingLengthMs){
                             throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
                         }
+#endif
                         ++inconsistentSamples;
                     }else{
                         sample.loadPercentage = (sample.latency / totalTime) * 100.0;
@@ -180,7 +189,7 @@ void* applicationSupportThread(void* data){
                     assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE);
                 }
                 msg.payload.sample.bandwidth = 0;
-                msg.payload.sample.latency = std::numeric_limits<double>::max(); //TODO NO, mettere una marca per prendere il valore dello step precedente.
+                msg.payload.sample.latency = KNARR_VALUE_NOT_AVAILABLE;
                 msg.payload.sample.loadPercentage = 0;
                 msg.payload.sample.numTasks = 0;
             }
@@ -304,9 +313,8 @@ void Application::terminate(){
         // If I was doing sampling, I could have spurious
         // tasks that I didn't record. For this reason,
         // I record them now.
-        if(td.samplingLength > 1){
-            td.totalTasks += td.currentSample;    
-        }
+        td.totalTasks += td.currentSample;    
+        
         _totalTasks += td.totalTasks;
         if(td.firstBegin < firstBegin){
             firstBegin = td.firstBegin;
@@ -371,9 +379,10 @@ pid_t Monitor::waitStart(){
     return m.payload.pid;
 }
 
-bool Monitor::getSample(ApplicationSample& sample){
+bool Monitor::getSample(ApplicationSample& sample, bool fromAll){
     Message m;
     m.type = MESSAGE_TYPE_SAMPLE_REQ;
+    m.payload.fromAll = fromAll;
     int r = _channelRef.send(&m, sizeof(m), 0);
     assert(r == sizeof(m));
     r = _channelRef.recv(&m, sizeof(m), 0);

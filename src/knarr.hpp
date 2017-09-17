@@ -33,6 +33,8 @@
 
 // This value is used to mark an inconsistent value.
 #define KNARR_VALUE_INCONSISTENT -1.0
+// This value is used when was not possible to collect it.
+#define KNARR_VALUE_NOT_AVAILABLE -2.0
 
 namespace knarr{
 
@@ -54,14 +56,14 @@ typedef struct ApplicationConfiguration{
     // is called more frequently than this value,
     // intermediate calls are skipped. If this value
     // is set to zero, no calls will be skipped.
-    // [default = 1.0]
+    // [default = 10.0]
     double samplingLengthMs;
 
     // Represents the minimum number of
     // threads from which the data must
     // be collected before replying
     // to the monitor requests.
-    // [default = KNARR_THREADS_NEEDED_ALL]
+    // [default = KNARR_THREADS_NEEDED_ONE]
     ThreadsNeeded threadsNeeded;
 
     // If true and if threadsNeeded is not KNARR_THREADS_NEEDED_ALL, 
@@ -111,8 +113,8 @@ typedef struct ApplicationConfiguration{
     bool preciseCount;
 
     ApplicationConfiguration(){
-        samplingLengthMs = 1.0;
-        threadsNeeded = KNARR_THREADS_NEEDED_ALL;
+        samplingLengthMs = 10.0;
+        threadsNeeded = KNARR_THREADS_NEEDED_ONE;
         adjustBandwidth = true;
         consistencyThreshold = 5.0;
         preciseCount = true;
@@ -441,6 +443,7 @@ inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
 
 typedef union Payload{
     pid_t pid;
+    bool fromAll;
     ApplicationSample sample;
     struct{
         ulong time;
@@ -480,6 +483,7 @@ typedef struct ThreadData{
     unsigned long long sampleStartTime;
     unsigned long long totalTasks;
     bool clean;
+    bool extraTask;
     ulong samplingLength;
     ulong currentSample;
     std::shared_ptr<std::atomic_flag> lock;
@@ -487,9 +491,9 @@ typedef struct ThreadData{
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), sampleStartTime(0), totalTasks(0), clean(false),
+                 extraTask(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
-                 // We initalize to SAMPLING_LENGTH - 1 so the first sample will be recorded
-                 currentSample(KNARR_DEFAULT_SAMPLING_LENGTH - 1),
+                 currentSample(0),
                  lock(std::make_shared<std::atomic_flag>()){
         memset(&padding, 0, sizeof(padding));
     }
@@ -504,8 +508,8 @@ void* applicationSupportThread(void*);
 
 class Application{
     friend void waitSampleStore(Application* application);
-    friend bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples);
-    friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples);
+    friend bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll);
+    friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll);
     friend void* applicationSupportThread(void*);
 private:
     ApplicationConfiguration _configuration;
@@ -605,10 +609,10 @@ public:
         // Equivalent to
         // tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
         // but faster.
-        tData.currentSample = (tData.currentSample + 1) == tData.samplingLength ? 0 : tData.currentSample + 1;
+        tData.currentSample = (tData.currentSample + 1) >= tData.samplingLength ? 0 : tData.currentSample + 1;
       
         // Skip
-        if(tData.currentSample && tData.currentSample != 1){
+        if(tData.currentSample > 1){
             return;
         }
         
@@ -644,11 +648,30 @@ public:
             tData.firstBegin = now;
         }
 
+        ulong oldSamplingLength = tData.samplingLength;
         if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
             // ATTENTION: IdleTime must be the last thing to set.
             tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
             if(_configuration.samplingLengthMs){
                 updateSamplingLength(tData);
+            }
+            // We need to manage the corner case where sample was one and
+            // now is greater than one. In this case currentSample is 0
+            // and end() would be executed on the new sample length.
+            // We need than to force currentSample to 1 to let the
+            // counting work.
+            if(oldSamplingLength == 1 && tData.samplingLength > 1){
+                tData.currentSample = 1;
+            }
+            // If I reduce the samplingLength to 1, I lose 1 task
+            // in the count. Indeed, now currentSample = 1 and the
+            // next end will not be executed. At next iteration,
+            // currentSample = 0 and end() will be executed, but
+            // samplingLength is 1 and only one task will be added
+            // to the count (but actually they are 2). We use
+            // a boolean flag to signal such situation.
+            if(oldSamplingLength > 1 && tData.samplingLength == 1){
+                tData.extraTask = true;
             }
             if(_configuration.preciseCount){
                 tData.lock->clear(std::memory_order_release);
@@ -692,20 +715,22 @@ public:
             while(tData.lock->test_and_set(std::memory_order_acquire));
         }
         if(tData.clean){
-            tData.clean = false;
             // Reset fields
             tData.reset();
-            tData.sampleStartTime = now;
-            // If a reset has been done, we do not store latency
-            // since computeStart may refer to a previous configuration.
-        }else{
-            // If we perform sampling, we assume that all the other samples
-            // different from the one recorded had the same latency.
-            double newLatency = (tData.rcvStart - tData.computeStart);
-            tData.sample.latency += (newLatency * tData.samplingLength);
-            tData.sample.numTasks += tData.samplingLength;
+            tData.sampleStartTime = tData.lastEnd;
+            tData.clean = false;
         }
+
+        // If we perform sampling, we assume that all the other samples
+        // different from the one recorded had the same latency.
+        double newLatency = (tData.rcvStart - tData.computeStart);
+        tData.sample.latency += (newLatency * tData.samplingLength);
+        tData.sample.numTasks += tData.samplingLength;
         tData.totalTasks += tData.samplingLength;
+        if(tData.extraTask){
+            ++tData.totalTasks;
+            tData.extraTask = false;
+        }
         tData.lastEnd = now;
         // When application begins it has never been cleaned,
         // so we need to manually set sampleStartTime here
@@ -757,7 +782,7 @@ public:
     
     pid_t waitStart();
 
-    bool getSample(ApplicationSample& sample);
+    bool getSample(ApplicationSample& sample, bool fromAll = false);
 
     /**
      * Returns the execution time of the application (milliseconds).
