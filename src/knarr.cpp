@@ -65,11 +65,8 @@ inline bool thisSampleNeeded(Application* application, size_t threadId, size_t u
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
-    const ThreadData& chkToAdd = application->_threadData[threadId];
-    const ApplicationSample& chkSample = chkToAdd.sample;
-
-    unsigned long long totalTime = chkToAdd.lastEnd - chkToAdd.sampleStartTime;
-    if(totalTime == 0 || chkSample.latency == 0 || chkToAdd.idleTime == 0 || chkToAdd.clean){
+    const ApplicationSample& chkSample = application->_threadData[threadId].sample;
+    if(chkSample.numTasks == 0){
         if(thisSampleNeeded(application, threadId, updatedSamples, fromAll) &&
            !application->_supportStop){
             return true;
@@ -85,18 +82,6 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
         return true;
     }
     return false;
-}
-
-// We do not use abs because they are both unsigned
-// if we do abs(x - y) and x is smaller than y, the temporary
-// result (before applying abs) cannot be negative so it will wrap
-// and assume a huge value.
-static inline unsigned long long absDiff(unsigned long long x, unsigned long long y){
-    if(x > y){
-        return x - y;
-    }else{
-        return y - x;
-    }
 }
 
 void* applicationSupportThread(void* data){
@@ -115,64 +100,59 @@ void* applicationSupportThread(void* data){
 
             // Add the samples of all the threads.
             size_t updatedSamples = 0, inconsistentSamples = 0;
-            std::vector<size_t> toClean; // Identifiers of threads to be cleaned.
             size_t numThreads = application->_threadData.size();
-            for(size_t i = 0; i < numThreads; i++){
-                ThreadData& toAdd = application->_threadData[i];                                
-                
+            std::vector<double> customVec[KNARR_MAX_CUSTOM_FIELDS];
+
+            for(size_t i = 0; i < numThreads; i++){             
                 // If needed, wait for thread to store a sample.                
                 while(keepWaitingSample(application, i, updatedSamples, fromAll)){
                     waitSampleStore(application);
                 }
 
                 if(application->_configuration.preciseCount){
-                    while(toAdd.lock->test_and_set(std::memory_order_acquire));
+                    while(application->_threadData[i].lock->test_and_set(std::memory_order_acquire));
                 }
-                ApplicationSample sample = toAdd.sample;
-                if(application->_configuration.preciseCount){
-                    toAdd.lock->clear(std::memory_order_release);
-                }
-                // If we required a cleaning and it has not yet 
-                // been done (clean = true), we skip this thread.
-                unsigned long long totalTime = toAdd.lastEnd - toAdd.sampleStartTime;
-                if(totalTime && sample.latency && toAdd.idleTime && !toAdd.clean){                    
-                    unsigned long long totalTimeEstimated = (sample.latency + toAdd.idleTime);
+                ThreadData& toAdd = application->_threadData[i];
+                ApplicationSample& sample = toAdd.sample;
+
+                if(sample.numTasks){
                     // If the gap between real total time and the one estimated with
                     // latency and idle time is greater than a threshold, idleTime and
                     // latency are not reliable.
-                    if(((absDiff(totalTime, totalTimeEstimated) /
-                         (double) totalTime) * 100.0) > application->_configuration.consistencyThreshold){
-#if defined(KNARR_DEFAULT_SAMPLING_LENGTH) && KNARR_DEFAULT_SAMPLING_LENGTH == 1
-                        if(!application->_configuration.samplingLengthMs){
-                            throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
-                        }
-#endif
+                    if(toAdd.sample.latency == KNARR_VALUE_INCONSISTENT){
                         ++inconsistentSamples;
                     }else{
-                        sample.loadPercentage = (sample.latency / totalTime) * 100.0;
                         sample.latency /= sample.numTasks;
                         msg.payload.sample.loadPercentage += sample.loadPercentage;
                         msg.payload.sample.latency += sample.latency;
                     }
-                    sample.bandwidth = sample.numTasks / (totalTime / 1000000000.0); // From tasks/ns to tasks/sec
                     msg.payload.sample.bandwidth += sample.bandwidth;
                     msg.payload.sample.numTasks += sample.numTasks;
 
                     ++updatedSamples;
-                    toClean.push_back(i);
+                    for(size_t j = 0; j < KNARR_MAX_CUSTOM_FIELDS; j++){
+                        // TODO How to manage not-yet-stored custom values?
+                        customVec[j].push_back(toAdd.sample.customFields[j]);
+                    }
+                    // Reset fields
+                    toAdd.clean = true;
+                }
+
+                if(application->_configuration.preciseCount){
+                    application->_threadData[i].lock->clear(std::memory_order_release);
                 }
             }
 
             // If at least one thread is progressing.
             if(updatedSamples){
                 if(application->_configuration.adjustBandwidth && 
-                   updatedSamples != application->_threadData.size()){
+                   updatedSamples != numThreads){
                     // This can only happen if we didn't need to store
                     // data from all the threads
                     if(!application->_supportStop){
                         assert(application->_configuration.threadsNeeded != KNARR_THREADS_NEEDED_ALL);
                     }
-                    msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (application->_threadData.size() - updatedSamples);
+                    msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (numThreads - updatedSamples);
                 }
 
                 // If we collected only inconsistent samples, we mark latency and load as inconsistent.
@@ -196,25 +176,16 @@ void* applicationSupportThread(void* data){
             
             // Aggregate custom values.
             if(application->_aggregator){
-                std::vector<double> customVec;
-                customVec.reserve(application->_threadData.size());
                 for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
-                    customVec.clear();
-                    for(ThreadData& td : application->_threadData){
-                        customVec.push_back(td.sample.customFields[i]);
-                    }
-                    msg.payload.sample.customFields[i] = application->_aggregator->aggregate(i, customVec);
+                    msg.payload.sample.customFields[i] = application->_aggregator->aggregate(i, customVec[i]);
                 }
             }
+
             DEBUG(msg.payload.sample);
             // Send message
-            application->_channelRef.send(&msg, sizeof(msg), 0);
-            // Tell all threads to clear their sample since current one have
-            // been already sent.
-            for(size_t i = 0; i < toClean.size(); i++){
-                application->_threadData[i].clean = true;
+            if(!application->_supportStop){
+                application->_channelRef.send(&msg, sizeof(msg), 0);
             }
-            toClean.clear();
         }else if(res == -1){
             throw std::runtime_error("Received less bytes than expected.");
         }
@@ -262,10 +233,11 @@ void Application::notifyStart(){
     assert(r == sizeof(msg));
 }
 
-void Application::updateSamplingLength(ThreadData& tData){
+void Application::updateSamplingLength(ThreadData& tData, unsigned long long sampleTime){
     if(tData.sample.numTasks){
-        double latencyNs = tData.sample.latency / tData.sample.numTasks;
+        double latencyNs = sampleTime / tData.sample.numTasks;
         double latencyMs = latencyNs / 1000000.0;
+        // If samplingLength == 1 we would have one begin()-end() pair every latencyMs milliseconds
         if(latencyMs){
             tData.samplingLength = std::ceil((double) _configuration.samplingLengthMs / latencyMs);
         }else{

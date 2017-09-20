@@ -109,6 +109,8 @@ typedef struct ApplicationConfiguration{
     // exact count. However it could slightly increase the overhead of
     // the instrumentation. However, if samplingIntervalMs is left to its default
     // value there should be no significative overhead.
+    // ATTENTION: Setting to false is extremly dangerous and strongly
+    // discouraged.
     // [default = true]
     bool preciseCount;
 
@@ -482,16 +484,16 @@ typedef struct ThreadData{
     unsigned long long lastEnd;
     unsigned long long sampleStartTime;
     unsigned long long totalTasks;
-    bool clean;
     bool extraTask;
+    bool clean;
     ulong samplingLength;
     ulong currentSample;
     std::shared_ptr<std::atomic_flag> lock;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
-                 lastEnd(0), sampleStartTime(0), totalTasks(0), clean(false),
-                 extraTask(false),
+                 lastEnd(0), sampleStartTime(0), totalTasks(0),
+                 extraTask(false), clean(true),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  currentSample(0),
                  lock(std::make_shared<std::atomic_flag>()){
@@ -528,7 +530,19 @@ private:
     // We are sure it is called by at most one thread.
     void notifyStart();
 
-    void updateSamplingLength(ThreadData& td);
+    void updateSamplingLength(ThreadData& td, unsigned long long sampleTime);
+
+    // We do not use abs because they are both unsigned
+    // if we do abs(x - y) and x is smaller than y, the temporary
+    // result (before applying abs) cannot be negative so it will wrap
+    // and assume a huge value.
+    static inline unsigned long long absDiff(unsigned long long x, unsigned long long y){
+        if(x > y){
+            return x - y;
+        }else{
+            return y - x;
+        }
+    }
 public:
     /**
      * Constructs this object.
@@ -615,24 +629,10 @@ public:
         if(tData.currentSample > 1){
             return;
         }
-        
-        // To collect a sample, we need to execute begin two 
-        // times in a row, i.e.
-        //     ... begin(); end(); begin(); ...
-        //
-        // Otherwise it would not be possible to collect the
-        // idleTime.
-        //
-        // When tData.currentSample == 0:
-        //      - We start the timer for recording latency 
-        //        (tData.computeStart = now).
-        // When tData.currentSample == 1:
-        //      - We record idleTime (since the timer has)
-        //        been started by end() with currentSample == 0.
-        // The only exception is for samplingLength == 1, since
-        // in this case currentSample is always 0.
 
         unsigned long long now = getCurrentTimeNs();
+
+        /********* Only executed once (at startup). - BEGIN *********/
         if(!_started){
             pthread_mutex_lock(&_mutex);
             // This awful double check is done to avoid locking the flag
@@ -647,34 +647,82 @@ public:
         if(!tData.firstBegin){
             tData.firstBegin = now;
         }
+        /********* Only executed once (at startup). - END *********/
 
         ulong oldSamplingLength = tData.samplingLength;
-        if(tData.computeStart && (tData.currentSample == 1 || tData.samplingLength == 1)){
-            // ATTENTION: IdleTime must be the last thing to set.
-            tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
-            if(_configuration.samplingLengthMs){
-                updateSamplingLength(tData);
-            }
-            // We need to manage the corner case where sample was one and
-            // now is greater than one. In this case currentSample is 0
-            // and end() would be executed on the new sample length.
-            // We need than to force currentSample to 1 to let the
-            // counting work.
-            if(oldSamplingLength == 1 && tData.samplingLength > 1){
-                tData.currentSample = 1;
-            }
-            // If I reduce the samplingLength to 1, I lose 1 task
-            // in the count. Indeed, now currentSample = 1 and the
-            // next end will not be executed. At next iteration,
-            // currentSample = 0 and end() will be executed, but
-            // samplingLength is 1 and only one task will be added
-            // to the count (but actually they are 2). We use
-            // a boolean flag to signal such situation.
-            if(oldSamplingLength > 1 && tData.samplingLength == 1){
-                tData.extraTask = true;
-            }
-            if(_configuration.preciseCount){
-                tData.lock->clear(std::memory_order_release);
+        if(tData.computeStart){
+            // To collect a sample, we need to execute begin two
+            // times in a row, i.e.
+            //     ... begin(); end(); begin(); ...
+            //
+            // Otherwise it would not be possible to collect the
+            // idleTime.
+            //
+            // When tData.currentSample == 0:
+            //      - We start the timer for recording latency
+            //        (tData.computeStart = now).
+            // When tData.currentSample == 1:
+            //      - We record idleTime (since the timer has)
+            //        been started by end() with currentSample == 0.
+            // The only exception is for samplingLength == 1, since
+            // in this case currentSample is always 0 and we execute
+            // both sections.
+            if(tData.currentSample == 1 || tData.samplingLength == 1){
+                if(tData.clean){
+                    tData.reset();
+                    tData.sampleStartTime = now;
+                    tData.clean = false;
+                }else{
+                    tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
+                    unsigned long long sampleTime = now - tData.sampleStartTime;
+                    unsigned long long sampleTimeEstimated = (tData.sample.latency + tData.idleTime);
+
+                    tData.sample.bandwidth = tData.sample.numTasks /
+                                             (sampleTime / 1000000000.0); // From tasks/ns to tasks/sec
+                    tData.sample.loadPercentage = (tData.sample.latency / sampleTime) * 100.0;
+
+                    if(_configuration.samplingLengthMs){
+                        updateSamplingLength(tData, sampleTime);
+                    }
+
+                    // Consistency check
+                    // If the gap between real total time and the one estimated with
+                    // latency and idle time is greater than a threshold, idleTime and
+                    // latency are not reliable.
+                    if(((absDiff(sampleTime, sampleTimeEstimated) /
+                         (double) sampleTime) * 100.0) > _configuration.consistencyThreshold){
+#if defined(KNARR_DEFAULT_SAMPLING_LENGTH) && KNARR_DEFAULT_SAMPLING_LENGTH == 1
+                        if(_configuration.samplingLengthMs == 0){
+                            throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
+                        }
+#endif
+                        tData.sample.latency = KNARR_VALUE_INCONSISTENT;
+                        tData.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
+                    }
+
+                    // We need to manage the corner case where sample was one and
+                    // now is greater than one. In this case currentSample is 0
+                    // and end() would be executed on the new sample length.
+                    // We need than to force currentSample to 1 to let the
+                    // counting work.
+                    if(oldSamplingLength == 1 && tData.samplingLength > 1){
+                        tData.currentSample = 1;
+                    }
+                    // If I reduce the samplingLength to 1, I lose 1 task
+                    // in the count. Indeed, now currentSample = 1 and the
+                    // next end will not be executed. At next iteration,
+                    // currentSample = 0 and end() will be executed, but
+                    // samplingLength is 1 and only one task will be added
+                    // to the count (but actually they are 2). We use
+                    // a boolean flag to signal such situation.
+                    if(oldSamplingLength > 1 && tData.samplingLength == 1){
+                        tData.extraTask = true;
+                    }
+                }
+
+                if(_configuration.preciseCount){
+                    tData.lock->clear(std::memory_order_release);
+                }
             }
         }
         tData.computeStart = now;
@@ -708,18 +756,12 @@ public:
         if(tData.currentSample){
             return;
         }
-        // We only store samples if tData.currentSample == 0
-        unsigned long long now = getCurrentTimeNs();
-        tData.rcvStart = now;    
         if(_configuration.preciseCount){
             while(tData.lock->test_and_set(std::memory_order_acquire));
         }
-        if(tData.clean){
-            // Reset fields
-            tData.reset();
-            tData.sampleStartTime = tData.lastEnd;
-            tData.clean = false;
-        }
+        // We only store samples if tData.currentSample == 0
+        unsigned long long now = getCurrentTimeNs();
+        tData.rcvStart = now;    
 
         // If we perform sampling, we assume that all the other samples
         // different from the one recorded had the same latency.
@@ -728,16 +770,11 @@ public:
         tData.sample.numTasks += tData.samplingLength;
         tData.totalTasks += tData.samplingLength;
         if(tData.extraTask){
+            ++tData.sample.numTasks;
             ++tData.totalTasks;
             tData.extraTask = false;
         }
         tData.lastEnd = now;
-        // When application begins it has never been cleaned,
-        // so we need to manually set sampleStartTime here
-        // for the first sample (i.e. when sampleStartTime is zero)
-        if(!tData.sampleStartTime){
-            tData.sampleStartTime = now;
-        }
     }
 
     /**
