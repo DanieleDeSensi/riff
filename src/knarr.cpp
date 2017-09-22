@@ -65,8 +65,7 @@ inline bool thisSampleNeeded(Application* application, size_t threadId, size_t u
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
-    const ApplicationSample& chkSample = application->_threadData[threadId].sample;
-    if(chkSample.numTasks == 0){
+    if(application->_threadData[threadId].consolidate){
         if(thisSampleNeeded(application, threadId, updatedSamples, fromAll) &&
            !application->_supportStop){
             return true;
@@ -103,23 +102,22 @@ void* applicationSupportThread(void* data){
             size_t numThreads = application->_threadData.size();
             std::vector<double> customVec[KNARR_MAX_CUSTOM_FIELDS];
 
-            for(size_t i = 0; i < numThreads; i++){             
-                // If needed, wait for thread to store a sample.                
+            assert(KNARR_THREADS_NEEDED_ALL); // TODO At the moment we only support this case
+
+            for(size_t i = 0; i < numThreads; i++){
+                application->_threadData[i].consolidate = true;
+            }
+
+            for(size_t i = 0; i < numThreads; i++){
+                // If needed, wait for thread to store a sample.
                 while(keepWaitingSample(application, i, updatedSamples, fromAll)){
                     waitSampleStore(application);
                 }
 
-                if(application->_configuration.preciseCount){
-                    while(application->_threadData[i].lock->test_and_set(std::memory_order_acquire));
-                }
                 ThreadData& toAdd = application->_threadData[i];
-                ApplicationSample& sample = toAdd.sample;
-
-                if(sample.numTasks){
-                    // If the gap between real total time and the one estimated with
-                    // latency and idle time is greater than a threshold, idleTime and
-                    // latency are not reliable.
-                    if(toAdd.sample.latency == KNARR_VALUE_INCONSISTENT){
+                if(!toAdd.consolidate){
+                    ApplicationSample& sample = toAdd.consolidatedSample;
+                    if(sample.latency == KNARR_VALUE_INCONSISTENT){
                         ++inconsistentSamples;
                     }else{
                         sample.latency /= sample.numTasks;
@@ -132,14 +130,8 @@ void* applicationSupportThread(void* data){
                     ++updatedSamples;
                     for(size_t j = 0; j < KNARR_MAX_CUSTOM_FIELDS; j++){
                         // TODO How to manage not-yet-stored custom values?
-                        customVec[j].push_back(toAdd.sample.customFields[j]);
+                        customVec[j].push_back(sample.customFields[j]);
                     }
-                    // Reset fields
-                    toAdd.clean = true;
-                }
-
-                if(application->_configuration.preciseCount){
-                    application->_threadData[i].lock->clear(std::memory_order_release);
                 }
             }
 
@@ -241,7 +233,7 @@ void Application::updateSamplingLength(ThreadData& tData, unsigned long long sam
         if(latencyMs){
             tData.samplingLength = std::ceil((double) _configuration.samplingLengthMs / latencyMs);
         }else{
-            tData.samplingLength = 1;
+            tData.samplingLength = KNARR_DEFAULT_SAMPLING_LENGTH;
         }
     }
 }
@@ -254,7 +246,6 @@ void Application::setConfigurationStreaming(){
     ApplicationConfiguration configuration;
     configuration.threadsNeeded = KNARR_THREADS_NEEDED_NONE;
     configuration.adjustBandwidth = true;
-    configuration.preciseCount = true;
     _configuration = configuration;
 }
 
@@ -262,7 +253,6 @@ void Application::setConfigurationBatch(ThreadsNeeded threadsNeeded){
     ApplicationConfiguration configuration;
     configuration.threadsNeeded = threadsNeeded;
     configuration.adjustBandwidth = true;
-    configuration.preciseCount = true;
     _configuration = configuration;
 }
 
@@ -293,10 +283,6 @@ void Application::terminate(){
         }
         if(td.lastEnd > lastEnd){
             lastEnd = td.lastEnd;
-        }
-        // Unlock all the locks (they were locked with end() and so never unlocked)
-        if(_configuration.preciseCount){
-            td.lock->clear(std::memory_order_release);
         }
     }
     _executionTime = (lastEnd - firstBegin) / 1000000.0; // Must be in ms

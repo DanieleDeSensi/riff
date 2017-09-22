@@ -63,7 +63,7 @@ typedef struct ApplicationConfiguration{
     // threads from which the data must
     // be collected before replying
     // to the monitor requests.
-    // [default = KNARR_THREADS_NEEDED_ONE]
+    // [default = KNARR_THREADS_NEEDED_ALL]
     ThreadsNeeded threadsNeeded;
 
     // If true and if threadsNeeded is not KNARR_THREADS_NEEDED_ALL, 
@@ -100,26 +100,11 @@ typedef struct ApplicationConfiguration{
     // [default = 5.0]
     double consistencyThreshold;
 
-    // If false, the metrics count could be slightly approximated. This
-    // is not an issue when there are many iterations per second since
-    // the error would just be of few percentage points. 
-    // It is a problem with few iterations per second since even
-    // counting one task less/more can significantly change
-    // the bandwidth/latency accounting. If true the count will be the
-    // exact count. However it could slightly increase the overhead of
-    // the instrumentation. However, if samplingIntervalMs is left to its default
-    // value there should be no significative overhead.
-    // ATTENTION: Setting to false is extremly dangerous and strongly
-    // discouraged.
-    // [default = true]
-    bool preciseCount;
-
     ApplicationConfiguration(){
-        samplingLengthMs = 10.0;
-        threadsNeeded = KNARR_THREADS_NEEDED_ONE;
+        samplingLengthMs = 1.0;
+        threadsNeeded = KNARR_THREADS_NEEDED_ALL;
         adjustBandwidth = true;
         consistencyThreshold = 5.0;
-        preciseCount = true;
     }
 }ApplicationConfiguration;
 
@@ -477,6 +462,7 @@ public:
 
 typedef struct ThreadData{
     ApplicationSample sample __attribute__((aligned(LEVEL1_DCACHE_LINESIZE)));
+    ApplicationSample consolidatedSample;
     unsigned long long rcvStart;
     unsigned long long computeStart;
     unsigned long long idleTime;
@@ -485,24 +471,17 @@ typedef struct ThreadData{
     unsigned long long sampleStartTime;
     unsigned long long totalTasks;
     bool extraTask;
-    bool clean;
+    bool consolidate;
     ulong samplingLength;
     ulong currentSample;
-    std::shared_ptr<std::atomic_flag> lock;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), sampleStartTime(0), totalTasks(0),
-                 extraTask(false), clean(true),
+                 extraTask(false), consolidate(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
-                 currentSample(0),
-                 lock(std::make_shared<std::atomic_flag>()){
+                 currentSample(0){
         memset(&padding, 0, sizeof(padding));
-    }
-
-    void reset(){
-        sample = ApplicationSample();
-        idleTime = 0;
     }
 }ThreadData;
 
@@ -588,7 +567,6 @@ public:
      *     - threadsNeeded = KNARR_THREADS_NEEDED_NONE
      *     - adjustBandwidth = true
      *     - consistencyThreshold = default
-     *     - preciseCount = true
      * MUST be called before calling begin() for the first time.
      **/
     void setConfigurationStreaming();
@@ -600,7 +578,6 @@ public:
      *     - threadsNeeded = as specified
      *     - adjustBandwidth = true
      *     - consistencyThreshold = default
-     *     - preciseCount = true
      * MUST be called before calling begin() for the first time.
      * @param threadsNeeded Suggested KNARR_THREADS_NEEDED_ALL when 
      *                      there are many iterations per second 
@@ -647,6 +624,9 @@ public:
         if(!tData.firstBegin){
             tData.firstBegin = now;
         }
+        if(!tData.sampleStartTime){
+            tData.sampleStartTime = now;
+        }
         /********* Only executed once (at startup). - END *********/
 
         ulong oldSamplingLength = tData.samplingLength;
@@ -668,60 +648,56 @@ public:
             // in this case currentSample is always 0 and we execute
             // both sections.
             if(tData.currentSample == 1 || tData.samplingLength == 1){
-                if(tData.clean){
-                    tData.reset();
-                    tData.sampleStartTime = now;
-                    tData.clean = false;
-                }else{
-                    tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
-                    unsigned long long sampleTime = now - tData.sampleStartTime;
-                    unsigned long long sampleTimeEstimated = (tData.sample.latency + tData.idleTime);
+                tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
+                unsigned long long sampleTime = now - tData.sampleStartTime;
+                unsigned long long sampleTimeEstimated = (tData.sample.latency + tData.idleTime);
 
-                    tData.sample.bandwidth = tData.sample.numTasks /
-                                             (sampleTime / 1000000000.0); // From tasks/ns to tasks/sec
-                    tData.sample.loadPercentage = (tData.sample.latency / sampleTime) * 100.0;
+                tData.sample.bandwidth = tData.sample.numTasks /
+                                         (sampleTime / 1000000000.0); // From tasks/ns to tasks/sec
+                tData.sample.loadPercentage = (tData.sample.latency / sampleTime) * 100.0;
 
-                    if(_configuration.samplingLengthMs){
-                        updateSamplingLength(tData, sampleTime);
-                    }
-
+                if(tData.consolidate){
+                    tData.consolidatedSample = tData.sample;
                     // Consistency check
                     // If the gap between real total time and the one estimated with
                     // latency and idle time is greater than a threshold, idleTime and
                     // latency are not reliable.
                     if(((absDiff(sampleTime, sampleTimeEstimated) /
                          (double) sampleTime) * 100.0) > _configuration.consistencyThreshold){
-#if defined(KNARR_DEFAULT_SAMPLING_LENGTH) && KNARR_DEFAULT_SAMPLING_LENGTH == 1
-                        if(_configuration.samplingLengthMs == 0){
-                            throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not used.");
+                        if(tData.samplingLength == 1){
+                            throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not applied.");
                         }
-#endif
-                        tData.sample.latency = KNARR_VALUE_INCONSISTENT;
-                        tData.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
+                        tData.consolidatedSample.latency = KNARR_VALUE_INCONSISTENT;
+                        tData.consolidatedSample.loadPercentage = KNARR_VALUE_INCONSISTENT;
                     }
-
-                    // We need to manage the corner case where sample was one and
-                    // now is greater than one. In this case currentSample is 0
-                    // and end() would be executed on the new sample length.
-                    // We need than to force currentSample to 1 to let the
-                    // counting work.
-                    if(oldSamplingLength == 1 && tData.samplingLength > 1){
-                        tData.currentSample = 1;
-                    }
-                    // If I reduce the samplingLength to 1, I lose 1 task
-                    // in the count. Indeed, now currentSample = 1 and the
-                    // next end will not be executed. At next iteration,
-                    // currentSample = 0 and end() will be executed, but
-                    // samplingLength is 1 and only one task will be added
-                    // to the count (but actually they are 2). We use
-                    // a boolean flag to signal such situation.
-                    if(oldSamplingLength > 1 && tData.samplingLength == 1){
-                        tData.extraTask = true;
-                    }
+                    tData.sample = ApplicationSample();
+                    tData.idleTime = 0;
+                    tData.sampleStartTime = now;
+                    tData.consolidate = false;
                 }
 
-                if(_configuration.preciseCount){
-                    tData.lock->clear(std::memory_order_release);
+                // DON'T MOVE EARLIER THE SAMPLING UPDATE
+                if(_configuration.samplingLengthMs){
+                    updateSamplingLength(tData, sampleTime);
+                }
+
+                // We need to manage the corner case where sample was one and
+                // now is greater than one. In this case currentSample is 0
+                // and end() would be executed on the new sample length.
+                // We need than to force currentSample to 1 to let the
+                // counting work.
+                if(oldSamplingLength == 1 && tData.samplingLength > 1){
+                    tData.currentSample = 1;
+                }
+                // If I reduce the samplingLength to 1, I lose 1 task
+                // in the count. Indeed, now currentSample = 1 and the
+                // next end will not be executed. At next iteration,
+                // currentSample = 0 and end() will be executed, but
+                // samplingLength is 1 and only one task will be added
+                // to the count (but actually they are 2). We use
+                // a boolean flag to signal such situation.
+                if(oldSamplingLength > 1 && tData.samplingLength == 1){
+                    tData.extraTask = true;
                 }
             }
         }
@@ -755,9 +731,6 @@ public:
         // Skip
         if(tData.currentSample){
             return;
-        }
-        if(_configuration.preciseCount){
-            while(tData.lock->test_and_set(std::memory_order_acquire));
         }
         // We only store samples if tData.currentSample == 0
         unsigned long long now = getCurrentTimeNs();
