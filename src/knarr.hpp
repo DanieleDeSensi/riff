@@ -607,8 +607,6 @@ public:
             return;
         }
 
-        unsigned long long now = getCurrentTimeNs();
-
         /********* Only executed once (at startup). - BEGIN *********/
         if(!_started){
             pthread_mutex_lock(&_mutex);
@@ -621,6 +619,7 @@ public:
             pthread_mutex_unlock(&_mutex);
 
         }
+        unsigned long long now = getCurrentTimeNs();
         if(!tData.firstBegin){
             tData.firstBegin = now;
         }
