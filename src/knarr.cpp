@@ -45,11 +45,13 @@ unsigned long long getCurrentTimeNs(){
 }
 
 inline void waitSampleStore(Application* application){
+    /*
     if(application->_configuration.samplingLengthMs > 0){
         usleep((1000 * application->_configuration.samplingLengthMs) / application->_threadData.size());
     }else{
         usleep(1000);
-    }
+    }*/
+    usleep(1000);
 }
 
 inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
@@ -65,7 +67,7 @@ inline bool thisSampleNeeded(Application* application, size_t threadId, size_t u
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
-    if(application->_threadData[threadId].consolidate){
+    if(*application->_threadData[threadId].consolidate){
         if(thisSampleNeeded(application, threadId, updatedSamples, fromAll) &&
            !application->_supportStop){
             return true;
@@ -105,7 +107,7 @@ void* applicationSupportThread(void* data){
             assert(KNARR_THREADS_NEEDED_ALL); // TODO At the moment we only support this case
 
             for(size_t i = 0; i < numThreads; i++){
-                application->_threadData[i].consolidate = true;
+                *application->_threadData[i].consolidate = true;
             }
 
             for(size_t i = 0; i < numThreads; i++){
@@ -115,7 +117,7 @@ void* applicationSupportThread(void* data){
                 }
 
                 ThreadData& toAdd = application->_threadData[i];
-                if(!toAdd.consolidate){
+                if(!*toAdd.consolidate){
                     ApplicationSample& sample = toAdd.consolidatedSample;
                     if(sample.latency == KNARR_VALUE_INCONSISTENT){
                         ++inconsistentSamples;
@@ -225,16 +227,18 @@ void Application::notifyStart(){
     assert(r == sizeof(msg));
 }
 
-void Application::updateSamplingLength(ThreadData& tData, unsigned long long sampleTime){
-    if(tData.sample.numTasks){
-        double latencyNs = sampleTime / tData.sample.numTasks;
+ulong Application::updateSamplingLength(unsigned long long numTasks, unsigned long long sampleTime){
+    if(numTasks){
+        double latencyNs = sampleTime / numTasks;
         double latencyMs = latencyNs / 1000000.0;
         // If samplingLength == 1 we would have one begin()-end() pair every latencyMs milliseconds
         if(latencyMs){
-            tData.samplingLength = std::ceil((double) _configuration.samplingLengthMs / latencyMs);
+            return std::ceil((double) _configuration.samplingLengthMs / latencyMs);
         }else{
-            tData.samplingLength = KNARR_DEFAULT_SAMPLING_LENGTH;
+            return KNARR_DEFAULT_SAMPLING_LENGTH;
         }
+    }else{
+        throw std::runtime_error("updateSamplingLength called with no tasks stored.");
     }
 }
 
@@ -313,6 +317,8 @@ unsigned long long Application::getTotalTasks(){
 Monitor::Monitor(const std::string& channelName):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
         _executionTime(0), _totalTasks(0){
+    int linger = 5000;
+    _channel->setsockopt(NN_SOL_SOCKET, NN_LINGER, &linger, sizeof (linger));
     _chid = _channelRef.bind(channelName.c_str());
     assert(_chid >= 0);
 }

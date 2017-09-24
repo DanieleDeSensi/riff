@@ -32,9 +32,9 @@
 #endif
 
 // This value is used to mark an inconsistent value.
-#define KNARR_VALUE_INCONSISTENT -1.0
+#define KNARR_VALUE_INCONSISTENT std::numeric_limits<double>::min()
 // This value is used when was not possible to collect it.
-#define KNARR_VALUE_NOT_AVAILABLE -2.0
+#define KNARR_VALUE_NOT_AVAILABLE std::numeric_limits<double>::min() + 0.001
 
 namespace knarr{
 
@@ -101,7 +101,7 @@ typedef struct ApplicationConfiguration{
     double consistencyThreshold;
 
     ApplicationConfiguration(){
-        samplingLengthMs = 1.0;
+        samplingLengthMs = 10.0;
         threadsNeeded = KNARR_THREADS_NEEDED_ALL;
         adjustBandwidth = true;
         consistencyThreshold = 5.0;
@@ -471,17 +471,18 @@ typedef struct ThreadData{
     unsigned long long sampleStartTime;
     unsigned long long totalTasks;
     bool extraTask;
-    bool consolidate;
+    std::atomic<bool>* consolidate;
     ulong samplingLength;
     ulong currentSample;
     char padding[LEVEL1_DCACHE_LINESIZE];
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), sampleStartTime(0), totalTasks(0),
-                 extraTask(false), consolidate(false),
+                 extraTask(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  currentSample(0){
         memset(&padding, 0, sizeof(padding));
+        consolidate = new std::atomic<bool>(false);
     }
 }ThreadData;
 
@@ -509,7 +510,7 @@ private:
     // We are sure it is called by at most one thread.
     void notifyStart();
 
-    void updateSamplingLength(ThreadData& td, unsigned long long sampleTime);
+    ulong updateSamplingLength(unsigned long long numTasks, unsigned long long sampleTime);
 
     // We do not use abs because they are both unsigned
     // if we do abs(x - y) and x is smaller than y, the temporary
@@ -628,7 +629,6 @@ public:
         }
         /********* Only executed once (at startup). - END *********/
 
-        ulong oldSamplingLength = tData.samplingLength;
         if(tData.computeStart){
             // To collect a sample, we need to execute begin two
             // times in a row, i.e.
@@ -650,12 +650,25 @@ public:
                 tData.idleTime += ((now - tData.rcvStart) * tData.samplingLength);
                 unsigned long long sampleTime = now - tData.sampleStartTime;
                 unsigned long long sampleTimeEstimated = (tData.sample.latency + tData.idleTime);
+                ulong oldSamplingLength = tData.samplingLength, newSamplingLength = tData.samplingLength;
 
                 tData.sample.bandwidth = tData.sample.numTasks /
                                          (sampleTime / 1000000000.0); // From tasks/ns to tasks/sec
                 tData.sample.loadPercentage = (tData.sample.latency / sampleTime) * 100.0;
 
-                if(tData.consolidate){
+                if(_configuration.samplingLengthMs){
+                    newSamplingLength = updateSamplingLength(tData.sample.numTasks, sampleTime);
+                    /*
+                    We commented this since it could impair too much the reactiveness of
+                    the adaptive sampling.
+                    if(newSamplingLength > 10*oldSamplingLength){
+                        // To avoid setting too quickly a too long sampling length.
+                        newSamplingLength = 10*oldSamplingLength;
+                    }
+                    */
+                }
+
+                if(*tData.consolidate){
                     tData.consolidatedSample = tData.sample;
                     // Consistency check
                     // If the gap between real total time and the one estimated with
@@ -672,13 +685,10 @@ public:
                     tData.sample = ApplicationSample();
                     tData.idleTime = 0;
                     tData.sampleStartTime = now;
-                    tData.consolidate = false;
+                    *tData.consolidate = false;
                 }
 
-                // DON'T MOVE EARLIER THE SAMPLING UPDATE
-                if(_configuration.samplingLengthMs){
-                    updateSamplingLength(tData, sampleTime);
-                }
+                tData.samplingLength = newSamplingLength;
 
                 // We need to manage the corner case where sample was one and
                 // now is greater than one. In this case currentSample is 0
@@ -782,8 +792,23 @@ private:
     ulong _executionTime;
     unsigned long long _totalTasks;
 public:
+    /**
+     * Creates a monitor.
+     * @param channelName The name of the channel used
+     * to communicate with the application.
+     **/
     explicit Monitor(const std::string& channelName);
+    
+    /**
+     * Creates a monitor starting from an already existing
+     * nanomsg socket.
+     * bind() must already have bee called on the socket.
+     * @param socket The nanomsg socket. bind() must already have
+     * been called on it.
+     * @param chid The channel identifier.
+     **/
     Monitor(nn::socket& socket, uint chid);
+
     ~Monitor();
 
     Monitor(const Monitor& m) = delete;
