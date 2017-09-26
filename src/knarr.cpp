@@ -77,7 +77,12 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
 
 void* applicationSupportThread(void* data){
     Application* application = static_cast<Application*>(data);
-
+    
+    // TODO: We only support ALL, the other modes will be soon deleted.
+    // To manage streaming applications with ebbs we need to manage it client side (i.e. if
+    // monitor doesn't receive a response for a while it will say bw = 0).
+    assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ALL);
+    
     while(!application->_supportStop){
         Message recvdMsg;
         int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), 0);

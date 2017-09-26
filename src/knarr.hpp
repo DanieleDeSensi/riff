@@ -470,7 +470,6 @@ typedef struct ThreadData{
     unsigned long long lastEnd;
     unsigned long long sampleStartTime;
     unsigned long long totalTasks;
-    bool extraTask;
     std::atomic<bool>* consolidate;
     ulong samplingLength;
     ulong currentSample;
@@ -478,7 +477,6 @@ typedef struct ThreadData{
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), sampleStartTime(0), totalTasks(0),
-                 extraTask(false),
                  samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
                  currentSample(0){
         memset(&padding, 0, sizeof(padding));
@@ -676,8 +674,11 @@ public:
                     // latency are not reliable.
                     if(((absDiff(sampleTime, sampleTimeEstimated) /
                          (double) sampleTime) * 100.0) > _configuration.consistencyThreshold){
-                        if(tData.samplingLength == 1){
+                        if(!_configuration.samplingLengthMs){
+#if defined KNARR_DEFAULT_SAMPLING_LENGTH && KNARR_DEFAULT_SAMPLING_LENGTH == 1
+                            // If not adaptive sampling and if sampling length == 1
                             throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not applied.");
+#endif
                         }
                         tData.consolidatedSample.latency = KNARR_VALUE_INCONSISTENT;
                         tData.consolidatedSample.loadPercentage = KNARR_VALUE_INCONSISTENT;
@@ -698,15 +699,11 @@ public:
                 if(oldSamplingLength == 1 && tData.samplingLength > 1){
                     tData.currentSample = 1;
                 }
-                // If I reduce the samplingLength to 1, I lose 1 task
-                // in the count. Indeed, now currentSample = 1 and the
-                // next end will not be executed. At next iteration,
-                // currentSample = 0 and end() will be executed, but
-                // samplingLength is 1 and only one task will be added
-                // to the count (but actually they are 2). We use
-                // a boolean flag to signal such situation.
+                // If I reduce the samplingLength to 1, the only
+                // possible value for currentSample would be 0,
+                // so we set it to 0.
                 if(oldSamplingLength > 1 && tData.samplingLength == 1){
-                    tData.extraTask = true;
+                    tData.currentSample = 0;
                 }
             }
         }
@@ -751,11 +748,6 @@ public:
         tData.sample.latency += (newLatency * tData.samplingLength);
         tData.sample.numTasks += tData.samplingLength;
         tData.totalTasks += tData.samplingLength;
-        if(tData.extraTask){
-            ++tData.sample.numTasks;
-            ++tData.totalTasks;
-            tData.extraTask = false;
-        }
         tData.lastEnd = now;
     }
 
