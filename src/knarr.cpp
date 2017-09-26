@@ -44,16 +44,6 @@ unsigned long long getCurrentTimeNs(){
 #endif
 }
 
-inline void waitSampleStore(Application* application){
-    /*
-    if(application->_configuration.samplingLengthMs > 0){
-        usleep((1000 * application->_configuration.samplingLengthMs) / application->_threadData.size());
-    }else{
-        usleep(1000);
-    }*/
-    usleep(1000);
-}
-
 inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
     // If we need samples from all the threads
     //       or 
@@ -76,7 +66,7 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
         // If we don't need to wait for thread sample,
         // stop waiting.
         if(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE || 
-           (application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE && updatedSamples >= 1) || 
+           (application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE && (threadId != application->_threadData.size() - 1)) || 
            application->_supportStop){
             return false;
         }
@@ -104,16 +94,25 @@ void* applicationSupportThread(void* data){
             size_t numThreads = application->_threadData.size();
             std::vector<double> customVec[KNARR_MAX_CUSTOM_FIELDS];
 
-            assert(KNARR_THREADS_NEEDED_ALL); // TODO At the moment we only support this case
-
             for(size_t i = 0; i < numThreads; i++){
                 *application->_threadData[i].consolidate = true;
             }
+            unsigned long long consolidationTimestamp = getCurrentTimeNs();
 
             for(size_t i = 0; i < numThreads; i++){
                 // If needed, wait for thread to store a sample.
                 while(keepWaitingSample(application, i, updatedSamples, fromAll)){
-                    waitSampleStore(application);
+                    // To wait, the idea is that after the consolidation request has been
+                    // sent, samples should be stored at most after samplingLengthMs milliseconds.
+                    // If that time is already elapsed, we just wait for one millisecond 
+                    // (to avoid too tight spin loop), otherwise, we wait for that time to elapse.
+                    // (it is performed at most once independently from the number of needed samples)
+                    unsigned long long timeFromConsolidation = (getCurrentTimeNs() - consolidationTimestamp) / 1000000.0;
+                    if(timeFromConsolidation > application->_configuration.samplingLengthMs){
+                        usleep(1000);
+                    }else{
+                        usleep((application->_configuration.samplingLengthMs - timeFromConsolidation)*1000);
+                    }
                 }
 
                 ThreadData& toAdd = application->_threadData[i];
