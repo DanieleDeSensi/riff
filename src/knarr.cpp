@@ -138,6 +138,12 @@ void* applicationSupportThread(void* data){
                         // TODO How to manage not-yet-stored custom values?
                         customVec[j].push_back(sample.customFields[j]);
                     }
+                    /**
+                     * We need to reset the consolidated sample. Otherwise,
+                     * when stop command is received, we could send
+                     * again this sample even if it was not updated.
+                     **/
+                    toAdd.consolidatedSample = ApplicationSample;
                 }
             }
 
@@ -158,8 +164,8 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
                     msg.payload.sample.latency = KNARR_VALUE_INCONSISTENT;
                 }else{
-                    msg.payload.sample.loadPercentage /= updatedSamples;
-                    msg.payload.sample.latency /= updatedSamples;
+                    msg.payload.sample.loadPercentage /= (updatedSamples - inconsistentSamples);
+                    msg.payload.sample.latency /= (updatedSamples - inconsistentSamples);
                 }
             }else{
                 // This can only happens if the threadsNeeded is NONE
