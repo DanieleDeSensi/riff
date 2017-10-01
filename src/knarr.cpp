@@ -143,7 +143,7 @@ void* applicationSupportThread(void* data){
                      * when stop command is received, we could send
                      * again this sample even if it was not updated.
                      **/
-                    toAdd.consolidatedSample = ApplicationSample;
+                    toAdd.consolidatedSample = ApplicationSample();
                 }
             }
 
