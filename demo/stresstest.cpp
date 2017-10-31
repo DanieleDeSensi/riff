@@ -2,7 +2,7 @@
  * This is a stresstest to check how many begin()/end() calls we can perform per time unit
  * and what is the cost of a begin()/end() calls pair.
  **/
-#include "../src/knarr.hpp"
+#include "../src/riff.hpp"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -17,10 +17,10 @@
 
 int main(int argc, char** argv){
     omp_set_num_threads(NUM_THREADS);
-    knarr::Application app(CHNAME, NUM_THREADS);
+    riff::Application app(CHNAME, NUM_THREADS);
     usleep(5000000);
     double x = STARTX;
-    ulong start = knarr::getCurrentTimeNs();
+    ulong start = riff::getCurrentTimeNs();
 #pragma omp parallel for
     for(size_t i = 0; i < ITERATIONS; i++){
         int threadId = omp_get_thread_num();
@@ -28,7 +28,7 @@ int main(int argc, char** argv){
         x = std::sin(x);
         app.end(threadId);
     }
-    ulong instrumentedDuration = knarr::getCurrentTimeNs() - start;
+    ulong instrumentedDuration = riff::getCurrentTimeNs() - start;
     app.terminate();
     std::cout << "dummy1: " << x << std::endl; // Needed to avoid compiler optimizations which could remove processing of variable x.
     std::cout << "Maximum throughput (iterations/sec): " << app.getTotalTasks()/(app.getExecutionTime()/1000.0) << std::endl;
@@ -36,12 +36,12 @@ int main(int argc, char** argv){
     ulong nonInstrumentedDuration = 0;
     do{
         x = STARTX;
-        start = knarr::getCurrentTimeNs();
+        start = riff::getCurrentTimeNs();
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){
             x = std::sin(x);;
         }
-        nonInstrumentedDuration = knarr::getCurrentTimeNs() - start;
+        nonInstrumentedDuration = riff::getCurrentTimeNs() - start;
     }while(nonInstrumentedDuration > instrumentedDuration);
 
     std::cout << "dummy2: " << x << std::endl; // Needed to avoid compiler optimizations which could remove processing of variable x.

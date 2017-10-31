@@ -1,5 +1,5 @@
 /*
- * This file is part of knarr
+ * This file is part of riff
  *
  * (c) 2016- Daniele De Sensi (d.desensi.software@gmail.com)
  *
@@ -7,8 +7,8 @@
  * file that was distributed with this source code.
  */
 
-#ifndef KNARR_HPP_
-#define KNARR_HPP_
+#ifndef RIFF_HPP_
+#define RIFF_HPP_
 
 #include "archdata.hpp"
 #include "external/cppnanomsg/nn.hpp"
@@ -24,31 +24,31 @@
 #include <limits>
 #include <string.h>
 
-#define KNARR_MAX_CUSTOM_FIELDS 4
+#define RIFF_MAX_CUSTOM_FIELDS 4
 
-#ifndef KNARR_DEFAULT_SAMPLING_LENGTH
+#ifndef RIFF_DEFAULT_SAMPLING_LENGTH
 // Never skips any begin() call.
-#define KNARR_DEFAULT_SAMPLING_LENGTH 1
+#define RIFF_DEFAULT_SAMPLING_LENGTH 1
 #endif
 
 // This value is used to mark an inconsistent value.
-#define KNARR_VALUE_INCONSISTENT std::numeric_limits<double>::min()
+#define RIFF_VALUE_INCONSISTENT std::numeric_limits<double>::min()
 // This value is used when was not possible to collect it.
-#define KNARR_VALUE_NOT_AVAILABLE std::numeric_limits<double>::min() + 0.001
+#define RIFF_VALUE_NOT_AVAILABLE std::numeric_limits<double>::min() + 0.001
 
-namespace knarr{
+namespace riff{
 
 // Represents the minimum number of
 // threads from which the data must
 // be collected before replying
 // to the monitor requests.
 typedef enum ThreadsNeeded{
-    KNARR_THREADS_NEEDED_NONE = 0, // We can reply even if no threads stored the sample
-    KNARR_THREADS_NEEDED_ONE, // We can reply if at least one thread stored the sample
-    KNARR_THREADS_NEEDED_ALL // We can reply only when all the threads stored the sample
+    RIFF_THREADS_NEEDED_NONE = 0, // We can reply even if no threads stored the sample
+    RIFF_THREADS_NEEDED_ONE, // We can reply if at least one thread stored the sample
+    RIFF_THREADS_NEEDED_ALL // We can reply only when all the threads stored the sample
 }ThreadsNeeded;
 
-// Configuration parameters for knarr behaviour
+// Configuration parameters for riff behaviour
 // when collecting samples. 
 typedef struct ApplicationConfiguration{
     // Represents the minimum length in milliseconds
@@ -63,10 +63,10 @@ typedef struct ApplicationConfiguration{
     // threads from which the data must
     // be collected before replying
     // to the monitor requests.
-    // [default = KNARR_THREADS_NEEDED_ALL]
+    // [default = RIFF_THREADS_NEEDED_ALL]
     ThreadsNeeded threadsNeeded;
 
-    // If true and if threadsNeeded is not KNARR_THREADS_NEEDED_ALL, 
+    // If true and if threadsNeeded is not RIFF_THREADS_NEEDED_ALL, 
     // for the threads that didn't yet stored
     // their sample, we estimate the bandwidth to be
     // the same of the other threads. This should be set to
@@ -85,7 +85,7 @@ typedef struct ApplicationConfiguration{
     // far from the average (lower/higher), thus since we assume that
     // latency is more or less constant, in very skewed situations
     // our estimation could be completly wrong. This can 
-    // be detected by knarr by comparing the actual elapsed time
+    // be detected by riff by comparing the actual elapsed time
     // with the time computed as the sum of the latency and idle time.
     // When these values are different, it means that either the 
     // latency or the idle time have been not correctly estimated
@@ -102,7 +102,7 @@ typedef struct ApplicationConfiguration{
 
     ApplicationConfiguration(){
         samplingLengthMs = 10.0;
-        threadsNeeded = KNARR_THREADS_NEEDED_ALL;
+        threadsNeeded = RIFF_THREADS_NEEDED_ALL;
         adjustBandwidth = true;
         consistencyThreshold = 5.0;
     }
@@ -126,28 +126,28 @@ typedef enum MessageType{
  */
 typedef struct ApplicationSample{
     // The percentage ([0, 100]) of time that the node spent in the computation.
-    // If equal to KNARR_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
-    // knarr configuration.
+    // If equal to RIFF_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
+    // riff configuration.
     double loadPercentage;
 
     // The bandwidth of the application.
     double bandwidth;
 
     // The average latency (nanoseconds).
-    // If equal to KNARR_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
-    // knarr configuration.
+    // If equal to RIFF_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
+    // riff configuration.
     double latency;
 
     // The number of computed tasks.
     double numTasks;
 
     // Custom user fields.
-    double customFields[KNARR_MAX_CUSTOM_FIELDS];
+    double customFields[RIFF_MAX_CUSTOM_FIELDS];
 
     ApplicationSample():loadPercentage(0), bandwidth(0),
                         latency(0), numTasks(0){
         // We do not use memset due to cppcheck warnings.
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] = 0;
         }
     }
@@ -155,7 +155,7 @@ typedef struct ApplicationSample{
     ApplicationSample(ApplicationSample const& sample):
         loadPercentage(sample.loadPercentage), bandwidth(sample.bandwidth),
         latency(sample.latency), numTasks(sample.numTasks){
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] = sample.customFields[i];
         }
     }
@@ -167,7 +167,7 @@ typedef struct ApplicationSample{
         swap(bandwidth, x.bandwidth);
         swap(latency, x.latency);
         swap(numTasks, x.numTasks);
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             swap(customFields[i], x.customFields[i]);
         }
     }
@@ -178,178 +178,178 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator+=(const ApplicationSample& rhs){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage += rhs.loadPercentage;
         }else{
-            loadPercentage = KNARR_VALUE_INCONSISTENT;
+            loadPercentage = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
-           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
+           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth += rhs.bandwidth;
         }else{
-            bandwidth = KNARR_VALUE_INCONSISTENT;
+            bandwidth = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(latency != KNARR_VALUE_INCONSISTENT && 
-           rhs.latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT && 
+           rhs.latency != RIFF_VALUE_INCONSISTENT){
             latency += rhs.latency;
         }else{
-            latency = KNARR_VALUE_INCONSISTENT;
+            latency = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(numTasks != KNARR_VALUE_INCONSISTENT && 
-           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT && 
+           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks += rhs.numTasks;
         }else{
-            numTasks = KNARR_VALUE_INCONSISTENT;        
+            numTasks = RIFF_VALUE_INCONSISTENT;        
         }
 
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] += rhs.customFields[i];
         }
         return *this;
     }
 
     ApplicationSample& operator-=(const ApplicationSample& rhs){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage -= rhs.loadPercentage;
         }else{
-            loadPercentage = KNARR_VALUE_INCONSISTENT;
+            loadPercentage = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
-           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
+           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth -= rhs.bandwidth;
         }else{
-            bandwidth = KNARR_VALUE_INCONSISTENT;
+            bandwidth = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(latency != KNARR_VALUE_INCONSISTENT && 
-           rhs.latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT && 
+           rhs.latency != RIFF_VALUE_INCONSISTENT){
             latency -= rhs.latency;
         }else{
-            latency = KNARR_VALUE_INCONSISTENT;
+            latency = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(numTasks != KNARR_VALUE_INCONSISTENT && 
-           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT && 
+           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks -= rhs.numTasks;
         }else{
-            numTasks = KNARR_VALUE_INCONSISTENT;        
+            numTasks = RIFF_VALUE_INCONSISTENT;        
         }
 
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] -= rhs.customFields[i];
         }
         return *this;
     }
 
     ApplicationSample& operator*=(const ApplicationSample& rhs){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage *= rhs.loadPercentage;
         }else{
-            loadPercentage = KNARR_VALUE_INCONSISTENT;
+            loadPercentage = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
-           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
+           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth *= rhs.bandwidth;
         }else{
-            bandwidth = KNARR_VALUE_INCONSISTENT;
+            bandwidth = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(latency != KNARR_VALUE_INCONSISTENT && 
-           rhs.latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT && 
+           rhs.latency != RIFF_VALUE_INCONSISTENT){
             latency *= rhs.latency;
         }else{
-            latency = KNARR_VALUE_INCONSISTENT;
+            latency = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(numTasks != KNARR_VALUE_INCONSISTENT && 
-           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT && 
+           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks *= rhs.numTasks;
         }else{
-            numTasks = KNARR_VALUE_INCONSISTENT;        
+            numTasks = RIFF_VALUE_INCONSISTENT;        
         }
 
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= rhs.customFields[i];
         }
         return *this;
     }
 
     ApplicationSample& operator/=(const ApplicationSample& rhs){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
+           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage /= rhs.loadPercentage;
         }else{
-            loadPercentage = KNARR_VALUE_INCONSISTENT;
+            loadPercentage = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(bandwidth != KNARR_VALUE_INCONSISTENT && 
-           rhs.bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
+           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth /= rhs.bandwidth;
         }else{
-            bandwidth = KNARR_VALUE_INCONSISTENT;
+            bandwidth = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(latency != KNARR_VALUE_INCONSISTENT && 
-           rhs.latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT && 
+           rhs.latency != RIFF_VALUE_INCONSISTENT){
             latency /= rhs.latency;
         }else{
-            latency = KNARR_VALUE_INCONSISTENT;
+            latency = RIFF_VALUE_INCONSISTENT;
         }
 
-        if(numTasks != KNARR_VALUE_INCONSISTENT && 
-           rhs.numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT && 
+           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks /= rhs.numTasks;
         }else{
-            numTasks = KNARR_VALUE_INCONSISTENT;        
+            numTasks = RIFF_VALUE_INCONSISTENT;        
         }
 
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= rhs.customFields[i];
         }
         return *this;
     }
 
     ApplicationSample operator/=(double x){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage /= x;
         }
-        if(bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth /= x;
         }
-        if(latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT){
             latency /= x;
         }
-        if(numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks /= x;
         }
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= x;
         }
         return *this;
     }
 
     ApplicationSample operator*=(double x){
-        if(loadPercentage != KNARR_VALUE_INCONSISTENT){
+        if(loadPercentage != RIFF_VALUE_INCONSISTENT){
             loadPercentage *= x;
         }
-        if(bandwidth != KNARR_VALUE_INCONSISTENT){
+        if(bandwidth != RIFF_VALUE_INCONSISTENT){
             bandwidth *= x;
         }
-        if(latency != KNARR_VALUE_INCONSISTENT){
+        if(latency != RIFF_VALUE_INCONSISTENT){
             latency *= x;
         }
-        if(numTasks != KNARR_VALUE_INCONSISTENT){
+        if(numTasks != RIFF_VALUE_INCONSISTENT){
             numTasks *= x;
         }
-        for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+        for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= x;
         }
         return *this;
@@ -403,7 +403,7 @@ inline std::ostream& operator<<(std::ostream& os, const ApplicationSample& obj){
     os << "Bandwidth: " << obj.bandwidth << " ";
     os << "Latency: " << obj.latency << " ";
     os << "NumTasks: " << obj.numTasks << " ";
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         os << "CustomField" << i << ": " << obj.customFields[i] << " ";
     }
     os << "]";
@@ -420,7 +420,7 @@ inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
     is >> sample.latency;
     is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
     is >> sample.numTasks;
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
         is >> sample.customFields[i];
     }
@@ -477,7 +477,7 @@ typedef struct ThreadData{
 
     ThreadData():rcvStart(0), computeStart(0), idleTime(0), firstBegin(0),
                  lastEnd(0), sampleStartTime(0), totalTasks(0),
-                 samplingLength(KNARR_DEFAULT_SAMPLING_LENGTH),
+                 samplingLength(RIFF_DEFAULT_SAMPLING_LENGTH),
                  currentSample(0){
         memset(&padding, 0, sizeof(padding));
         consolidate = new std::atomic<bool>(false);
@@ -563,7 +563,7 @@ public:
      * Sets the default application configuration for a streaming application.
      * It will set:
      *     - samplingLengthMs = default
-     *     - threadsNeeded = KNARR_THREADS_NEEDED_NONE
+     *     - threadsNeeded = RIFF_THREADS_NEEDED_NONE
      *     - adjustBandwidth = true
      *     - consistencyThreshold = default
      * MUST be called before calling begin() for the first time.
@@ -578,11 +578,11 @@ public:
      *     - adjustBandwidth = true
      *     - consistencyThreshold = default
      * MUST be called before calling begin() for the first time.
-     * @param threadsNeeded Suggested KNARR_THREADS_NEEDED_ALL when 
+     * @param threadsNeeded Suggested RIFF_THREADS_NEEDED_ALL when 
      *                      there are many iterations per second 
-     *                      (> numThreads * 10), KNARR_THREADS_NEEDED_ONE otherwise.
+     *                      (> numThreads * 10), RIFF_THREADS_NEEDED_ONE otherwise.
      **/
-    void setConfigurationBatch(ThreadsNeeded threadsNeeded = KNARR_THREADS_NEEDED_ALL);
+    void setConfigurationBatch(ThreadsNeeded threadsNeeded = RIFF_THREADS_NEEDED_ALL);
     
     /**
      * This function must be called at each loop iteration when the computation
@@ -675,13 +675,13 @@ public:
                     if(((absDiff(sampleTime, sampleTimeEstimated) /
                          (double) sampleTime) * 100.0) > _configuration.consistencyThreshold){
                         if(!_configuration.samplingLengthMs){
-#if defined KNARR_DEFAULT_SAMPLING_LENGTH && KNARR_DEFAULT_SAMPLING_LENGTH == 1
+#if defined RIFF_DEFAULT_SAMPLING_LENGTH && RIFF_DEFAULT_SAMPLING_LENGTH == 1
                             // If not adaptive sampling and if sampling length == 1
                             throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not applied.");
 #endif
                         }
-                        tData.consolidatedSample.latency = KNARR_VALUE_INCONSISTENT;
-                        tData.consolidatedSample.loadPercentage = KNARR_VALUE_INCONSISTENT;
+                        tData.consolidatedSample.latency = RIFF_VALUE_INCONSISTENT;
+                        tData.consolidatedSample.loadPercentage = RIFF_VALUE_INCONSISTENT;
                     }
                     tData.sample = ApplicationSample();
                     tData.idleTime = 0;
@@ -713,7 +713,7 @@ public:
     /**
      * This function stores a custom value in the sample. It should be called
      * after 'end()'.
-     * @param index The index of the value [0, KNARR_MAX_CUSTOM_FIELDS[
+     * @param index The index of the value [0, RIFF_MAX_CUSTOM_FIELDS[
      * @param value The value.
      * @param threadId Must be specified when is called by multiple threads
      *        (e.g. inside a parallel loop). It must be a number univocally

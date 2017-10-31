@@ -4,7 +4,7 @@ TARGET = test1 test2 test3 test4
 
 all: $(TARGET)
 	@./runtests.sh
-%: %.cpp ../src/libknarr.a
+%: %.cpp ../src/libriff.a
 	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -o $@ $< $(INCS) $(LDFLAGS) $(LDLIBS) -fopenmp
 clean: 
 	-rm -fr *.o *~

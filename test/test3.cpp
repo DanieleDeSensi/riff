@@ -2,7 +2,7 @@
  * Test: Checks the correctness of the library
  * using already existing nanomsg sockets and 1 thread only.
  */
-#include "../src/knarr.hpp"
+#include "../src/riff.hpp"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -32,11 +32,11 @@ int main(int argc, char** argv){
         nn::socket socket(AF_SP, NN_PAIR);
         uint chid = socket.bind(CHNAME);
 
-        knarr::Monitor mon(socket, chid);
+        riff::Monitor mon(socket, chid);
         //std::cout << "[[Monitor]]: Waiting application start." << std::endl;
         mon.waitStart();
         //std::cout << "[[Monitor]]: Application started." << std::endl;
-        knarr::ApplicationSample sample;
+        riff::ApplicationSample sample;
         usleep(MONITORING_INTERVAL);
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
@@ -70,7 +70,7 @@ int main(int argc, char** argv){
         nn::socket socket(AF_SP, NN_PAIR);
         uint chid = socket.connect(CHNAME);
 
-        knarr::Application app(socket, chid);
+        riff::Application app(socket, chid);
         for(size_t i = 0; i < ITERATIONS; i++){
             app.begin();
             usleep(LATENCY);

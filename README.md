@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/DanieleDeSensi/knarr.svg?branch=master)](https://travis-ci.org/DanieleDeSensi/knarr) [![codecov](https://codecov.io/gh/DanieleDeSensi/knarr/branch/master/graph/badge.svg)](https://codecov.io/gh/DanieleDeSensi/knarr)
+[![Build Status](https://travis-ci.org/DanieleDeSensi/riff.svg?branch=master)](https://travis-ci.org/DanieleDeSensi/riff) [![codecov](https://codecov.io/gh/DanieleDeSensi/riff/branch/master/graph/badge.svg)](https://codecov.io/gh/DanieleDeSensi/riff)
 
 This is a simple performance monitor for parallel applications based on nanomsg.
 Detailed description coming soon.

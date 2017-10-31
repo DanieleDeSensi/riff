@@ -2,7 +2,7 @@ export CC                    = gcc
 export CXX                   = g++
 export OPTIMIZE_FLAGS        = -O3
 export CXXFLAGS              = $(COVERAGE_FLAGS) -Wall -pedantic --std=c++11
-export LDLIBS                = $(COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lknarr -lanl
+export LDLIBS                = $(COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lriff -lanl
 
 .PHONY: all demo test cppcheck clean cleanall
 

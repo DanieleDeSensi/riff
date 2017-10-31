@@ -1,4 +1,4 @@
-OPEN libknarr.a
+OPEN libriff.a
 ADDLIB external/nanomsg/build/libnanomsg.a
 SAVE
 END

@@ -16,7 +16,7 @@ script:
   # Tests
   - make "COVERAGE_FLAGS=-DTOLERANCE=0.1 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov test
   # Gcov
-  - cd src/ && gcov -r knarr.cpp && cd ..
+  - cd src/ && gcov -r riff.cpp && cd ..
 
 after_success:
     # Remove unnecessary coverage files

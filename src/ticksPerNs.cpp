@@ -1,5 +1,5 @@
 /*
- * This file is part of knarr
+ * This file is part of riff
  *
  * (c) 2016- Daniele De Sensi (d.desensi.software@gmail.com)
  *

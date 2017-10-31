@@ -1,7 +1,7 @@
 /**
  * Test: Checks the correctness of operators on samples.
  */
-#include "../src/knarr.hpp"
+#include "../src/riff.hpp"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -23,17 +23,17 @@
 
 
 int main(int argc, char** argv){
-    knarr::ApplicationSample sample;
+    riff::ApplicationSample sample;
     sample.bandwidth = 1;
     sample.latency = 2;
     sample.loadPercentage = 3;
     sample.numTasks = 4;
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         sample.customFields[i] = 4 + i + 1;
     }
 
     // Assignment
-    knarr::ApplicationSample sample2 = sample;
+    riff::ApplicationSample sample2 = sample;
 
     // Multiplication by constant
     sample2 *= 10;
@@ -41,7 +41,7 @@ int main(int argc, char** argv){
     assert(sample2.latency == sample.latency*10);
     assert(sample2.loadPercentage == sample.loadPercentage*10);
     assert(sample2.numTasks == sample.numTasks*10);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(sample2.customFields[i] == sample.customFields[i]*10);
     }
 
@@ -51,17 +51,17 @@ int main(int argc, char** argv){
     assert(sample2.latency == sample.latency);
     assert(sample2.loadPercentage == sample.loadPercentage);
     assert(sample2.numTasks == sample.numTasks);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(sample2.customFields[i] == sample.customFields[i]);
     }
 
     // Copy constructor and sum
-    knarr::ApplicationSample r(sample + sample2);
+    riff::ApplicationSample r(sample + sample2);
     assert(r.bandwidth == sample.bandwidth + sample2.bandwidth);
     assert(r.latency == sample.latency + sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage + sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks + sample2.numTasks);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(r.customFields[i] == sample.customFields[i] + sample2.customFields[i]);
     }
 
@@ -71,7 +71,7 @@ int main(int argc, char** argv){
     assert(r.latency == 0);
     assert(r.loadPercentage == 0);
     assert(r.numTasks == 0);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(r.customFields[i] == 0);
     }
 
@@ -81,7 +81,7 @@ int main(int argc, char** argv){
     assert(r.latency == sample.latency * sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage * sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks * sample2.numTasks);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(r.customFields[i] == sample.customFields[i] * sample2.customFields[i]);
     }
 
@@ -91,7 +91,7 @@ int main(int argc, char** argv){
     assert(r.latency == sample.latency / sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage / sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks / sample2.numTasks);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(r.customFields[i] == sample.customFields[i] / sample2.customFields[i]);
     }
 
@@ -107,7 +107,7 @@ int main(int argc, char** argv){
     assert(sample.bandwidth == 100);
     assert(sample.latency == 200);
     assert(sample.numTasks == 300);
-    for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+    for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
         assert(sample.customFields[i] == i);
     }
     return 0;

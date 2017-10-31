@@ -1,5 +1,5 @@
 .PHONY = all lib
-OBJS = knarr.o
+OBJS = riff.o
 
 all:
 	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -o ticksPerNs ticksPerNs.cpp
@@ -9,8 +9,8 @@ all:
 %.o: %.cpp *.hpp
 	$(CXX) $(CXXFLAGS) $(INCS) $(OPTIMIZE_FLAGS) -c -o $@ $<
 lib: $(OBJS)
-	rm -rf libknarr.a
-	ar rs libknarr.a $(OBJS)
+	rm -rf libriff.a
+	ar rs libriff.a $(OBJS)
 	ar -M < buildlib.ar 
 clean: 
 	-rm -fr *.o *~ ticksPerNs

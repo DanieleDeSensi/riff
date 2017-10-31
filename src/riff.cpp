@@ -1,5 +1,5 @@
 /*
- * This file is part of knarr
+ * This file is part of riff
  *
  * (c) 2016- Daniele De Sensi (d.desensi.software@gmail.com)
  *
@@ -9,7 +9,7 @@
 
 #include "external/cppnanomsg/nn.hpp"
 
-#include "knarr.hpp"
+#include "riff.hpp"
 
 #include <cmath>
 #include <errno.h>
@@ -23,7 +23,7 @@ using namespace std;
 #undef DEBUG
 #undef DEBUGB
 
-#ifdef DEBUG_KNARR
+#ifdef DEBUG_RIFF
 #define DEBUG(x) do { std::cerr << "[Knarr] " << x << std::endl; } while (0)
 #define DEBUGB(x) do {x;} while (0)
 #else
@@ -31,11 +31,11 @@ using namespace std;
 #define DEBUGB(x)
 #endif
 
-namespace knarr{
+namespace riff{
 
 unsigned long long getCurrentTimeNs(){
-#ifdef KNARR_NS_PER_TICK 
-    return rdtsc() / KNARR_NS_PER_TICK;
+#ifdef RIFF_NS_PER_TICK 
+    return rdtsc() / RIFF_NS_PER_TICK;
 #else
     struct timespec tp;
     int r = clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -50,10 +50,10 @@ inline bool thisSampleNeeded(Application* application, size_t threadId, size_t u
     // If this is the last thread and there are no 
     // samples stored, then we need this sample.
     return (fromAll ||
-            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ALL || 
+            application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ALL || 
             ((threadId == application->_threadData.size() - 1) && 
             !updatedSamples && 
-            application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE));
+            application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ONE));
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
@@ -65,8 +65,8 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
 
         // If we don't need to wait for thread sample,
         // stop waiting.
-        if(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE || 
-           (application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ONE && (threadId != application->_threadData.size() - 1)) || 
+        if(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_NONE || 
+           (application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ONE && (threadId != application->_threadData.size() - 1)) || 
            application->_supportStop){
             return false;
         }
@@ -81,7 +81,7 @@ void* applicationSupportThread(void* data){
     // TODO: We only support ALL, the other modes will be soon deleted.
     // To manage streaming applications with ebbs we need to manage it client side (i.e. if
     // monitor doesn't receive a response for a while it will say bw = 0).
-    assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_ALL);
+    assert(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ALL);
     
     while(!application->_supportStop){
         Message recvdMsg;
@@ -97,7 +97,7 @@ void* applicationSupportThread(void* data){
             // Add the samples of all the threads.
             size_t updatedSamples = 0, inconsistentSamples = 0;
             size_t numThreads = application->_threadData.size();
-            std::vector<double> customVec[KNARR_MAX_CUSTOM_FIELDS];
+            std::vector<double> customVec[RIFF_MAX_CUSTOM_FIELDS];
 
             for(size_t i = 0; i < numThreads; i++){
                 *application->_threadData[i].consolidate = true;
@@ -123,7 +123,7 @@ void* applicationSupportThread(void* data){
                 ThreadData& toAdd = application->_threadData[i];
                 if(!*toAdd.consolidate){
                     ApplicationSample& sample = toAdd.consolidatedSample;
-                    if(sample.latency == KNARR_VALUE_INCONSISTENT){
+                    if(sample.latency == RIFF_VALUE_INCONSISTENT){
                         ++inconsistentSamples;
                     }else{
                         sample.latency /= sample.numTasks;
@@ -134,7 +134,7 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.numTasks += sample.numTasks;
 
                     ++updatedSamples;
-                    for(size_t j = 0; j < KNARR_MAX_CUSTOM_FIELDS; j++){
+                    for(size_t j = 0; j < RIFF_MAX_CUSTOM_FIELDS; j++){
                         // TODO How to manage not-yet-stored custom values?
                         customVec[j].push_back(sample.customFields[j]);
                     }
@@ -154,15 +154,15 @@ void* applicationSupportThread(void* data){
                     // This can only happen if we didn't need to store
                     // data from all the threads
                     if(!application->_supportStop){
-                        assert(application->_configuration.threadsNeeded != KNARR_THREADS_NEEDED_ALL);
+                        assert(application->_configuration.threadsNeeded != RIFF_THREADS_NEEDED_ALL);
                     }
                     msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (numThreads - updatedSamples);
                 }
 
                 // If we collected only inconsistent samples, we mark latency and load as inconsistent.
                 if(inconsistentSamples == updatedSamples){
-                    msg.payload.sample.loadPercentage = KNARR_VALUE_INCONSISTENT;
-                    msg.payload.sample.latency = KNARR_VALUE_INCONSISTENT;
+                    msg.payload.sample.loadPercentage = RIFF_VALUE_INCONSISTENT;
+                    msg.payload.sample.latency = RIFF_VALUE_INCONSISTENT;
                 }else{
                     msg.payload.sample.loadPercentage /= (updatedSamples - inconsistentSamples);
                     msg.payload.sample.latency /= (updatedSamples - inconsistentSamples);
@@ -170,17 +170,17 @@ void* applicationSupportThread(void* data){
             }else{
                 // This can only happens if the threadsNeeded is NONE
                 if(!application->_supportStop){
-                    assert(application->_configuration.threadsNeeded == KNARR_THREADS_NEEDED_NONE);
+                    assert(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_NONE);
                 }
                 msg.payload.sample.bandwidth = 0;
-                msg.payload.sample.latency = KNARR_VALUE_NOT_AVAILABLE;
+                msg.payload.sample.latency = RIFF_VALUE_NOT_AVAILABLE;
                 msg.payload.sample.loadPercentage = 0;
                 msg.payload.sample.numTasks = 0;
             }
             
             // Aggregate custom values.
             if(application->_aggregator){
-                for(size_t i = 0; i < KNARR_MAX_CUSTOM_FIELDS; i++){
+                for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
                     msg.payload.sample.customFields[i] = application->_aggregator->aggregate(i, customVec[i]);
                 }
             }
@@ -245,10 +245,10 @@ ulong Application::updateSamplingLength(unsigned long long numTasks, unsigned lo
         if(latencyMs){
             return std::ceil((double) _configuration.samplingLengthMs / latencyMs);
         }else{
-            return KNARR_DEFAULT_SAMPLING_LENGTH;
+            return RIFF_DEFAULT_SAMPLING_LENGTH;
         }
     }else{
-        throw std::runtime_error("updateSamplingLength called with no tasks stored.");
+        throw std::runtime_error("updateSamplingLength called with no tasks stored. You probably called begin() twice in a row without calling end() after begin().");
     }
 }
 
@@ -258,7 +258,7 @@ void Application::setConfiguration(const ApplicationConfiguration& configuration
 
 void Application::setConfigurationStreaming(){
     ApplicationConfiguration configuration;
-    configuration.threadsNeeded = KNARR_THREADS_NEEDED_NONE;
+    configuration.threadsNeeded = RIFF_THREADS_NEEDED_NONE;
     configuration.adjustBandwidth = true;
     _configuration = configuration;
 }
@@ -274,12 +274,12 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
     if(threadId > _threadData.size()){
         throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
-    if(index < KNARR_MAX_CUSTOM_FIELDS){
+    if(index < RIFF_MAX_CUSTOM_FIELDS){
         ThreadData& tData = _threadData[threadId];
         tData.sample.customFields[index] = value;
     }else{
         throw std::runtime_error("Custom value index out of bound. Please "
-                                 "increase KNARR_MAX_CUSTOM_FIELDS macro value.");
+                                 "increase RIFF_MAX_CUSTOM_FIELDS macro value.");
     }
 }
 

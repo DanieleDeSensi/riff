@@ -4,7 +4,7 @@ TARGET = demo stresstest
 
 all: $(TARGET)
 	
-%: %.cpp ../src/libknarr.a
+%: %.cpp ../src/libriff.a
 	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -o $@ $< $(INCS) $(LDFLAGS) $(LDLIBS) -fopenmp
 clean: 
 	-rm -fr *.o *~

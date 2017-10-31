@@ -1,7 +1,7 @@
 /**
  * Test: Checks the correctness of the library when used by multiple threads.
  */
-#include "../src/knarr.hpp"
+#include "../src/riff.hpp"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -29,11 +29,11 @@ int main(int argc, char** argv){
         return -1;
     }
     if(atoi(argv[1]) == 0){
-        knarr::Monitor mon(CHNAME);
+        riff::Monitor mon(CHNAME);
         //std::cout << "[[Monitor]]: Waiting application start." << std::endl;
         mon.waitStart();
         //std::cout << "[[Monitor]]: Application started." << std::endl;
-        knarr::ApplicationSample sample;
+        riff::ApplicationSample sample;
         usleep(MONITORING_INTERVAL);
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
@@ -65,7 +65,7 @@ int main(int argc, char** argv){
         // Application. Use omp just to test the correctness when multiple
         // threads call begin/end.
         omp_set_num_threads(NUM_THREADS);
-        knarr::Application app(CHNAME, NUM_THREADS);
+        riff::Application app(CHNAME, NUM_THREADS);
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){
             int threadId = omp_get_thread_num();

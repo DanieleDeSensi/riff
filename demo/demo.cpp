@@ -1,4 +1,4 @@
-#include "../src/knarr.hpp"
+#include "../src/riff.hpp"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -17,7 +17,7 @@
 #define LATENCY 3000
 #define MONITORING_INTERVAL 1000000
 
-class DemoAggregator: public knarr::Aggregator{
+class DemoAggregator: public riff::Aggregator{
 public:
     double aggregate(size_t index, const std::vector<double>& customValues){
         double r = 0;
@@ -34,11 +34,11 @@ int main(int argc, char** argv){
         return -1;
     }
     if(atoi(argv[1]) == 0){
-        knarr::Monitor mon(CHNAME);
+        riff::Monitor mon(CHNAME);
         std::cout << "[[Monitor]]: Waiting application start." << std::endl;
         mon.waitStart();
         std::cout << "[[Monitor]]: Application started." << std::endl;
-        knarr::ApplicationSample sample;
+        riff::ApplicationSample sample;
         usleep(MONITORING_INTERVAL);
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
@@ -46,8 +46,8 @@ int main(int argc, char** argv){
         }
     }else{
         omp_set_num_threads(NUM_THREADS);
-        knarr::ApplicationConfiguration ac;
-        knarr::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
+        riff::ApplicationConfiguration ac;
+        riff::Application app(CHNAME, NUM_THREADS, new DemoAggregator());
         usleep(5000000);
 #pragma omp parallel for
         for(size_t i = 0; i < ITERATIONS; i++){
@@ -58,8 +58,8 @@ int main(int argc, char** argv){
             std::cout << "[[Application]] Computing." << std::endl;
             app.begin(threadId);
             // Simulates the computation latency
-            unsigned long start = knarr::getCurrentTimeNs();
-            do{;}while(knarr::getCurrentTimeNs() - start < LATENCY*1000.0);
+            unsigned long start = riff::getCurrentTimeNs();
+            do{;}while(riff::getCurrentTimeNs() - start < LATENCY*1000.0);
             std::cout << "[[Application]] Computed." << std::endl;
             app.storeCustomValue(0, CUSTOM_VALUE_0, threadId);
             app.storeCustomValue(1, CUSTOM_VALUE_1, threadId);
