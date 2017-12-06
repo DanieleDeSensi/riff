@@ -11,7 +11,7 @@ all:
 demo:
 	$(MAKE) -C demo
 test:
-	$(MAKE) -C test
+	$(MAKE) -C test -j
 cppcheck:
 	cppcheck --xml --xml-version=2 --enable=warning,performance,information,style --error-exitcode=1 -UNN_EXPORT . -isrc/external -itest 2> cppcheck-report.xml
 clean:

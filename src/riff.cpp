@@ -185,6 +185,8 @@ void* applicationSupportThread(void* data){
                 }
             }
 
+            msg.phaseId = application->_phaseId;
+            msg.totalThreads = application->_totalThreads;
             DEBUG(msg.payload.sample);
             // Send message
             if(!application->_supportStop){
@@ -200,7 +202,8 @@ void* applicationSupportThread(void* data){
 Application::Application(const std::string& channelName, size_t numThreads,
                          Aggregator* aggregator):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-        _started(false), _aggregator(aggregator), _executionTime(0), _totalTasks(0){
+        _started(false), _aggregator(aggregator), _executionTime(0),
+        _totalTasks(0), _phaseId(0), _totalThreads(0){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -213,7 +216,8 @@ Application::Application(const std::string& channelName, size_t numThreads,
 Application::Application(nn::socket& socket, uint chid, size_t numThreads,
                          Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
-        _aggregator(aggregator), _executionTime(0), _totalTasks(0){
+        _aggregator(aggregator), _executionTime(0), _totalTasks(0), _phaseId(0),
+        _totalThreads(0){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     _threadData.resize(numThreads);
@@ -233,6 +237,8 @@ void Application::notifyStart(){
     Message msg;
     msg.type = MESSAGE_TYPE_START;
     msg.payload.pid = getpid();
+    msg.phaseId = _phaseId;
+    msg.totalThreads = _totalThreads;
     int r = _channelRef.send(&msg, sizeof(msg), 0);
     assert(r == sizeof(msg));
 }
@@ -283,6 +289,15 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
     }
 }
 
+void Application::setTotalThreads(uint totalThreads){
+    _totalThreads = totalThreads;
+}
+
+void Application::setPhaseId(uint phaseId, uint totalThreads){
+    _phaseId = phaseId;
+    setTotalThreads(totalThreads);
+}
+
 void Application::terminate(){
     unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max(); 
     for(ThreadData& td : _threadData){
@@ -326,7 +341,7 @@ unsigned long long Application::getTotalTasks(){
 
 Monitor::Monitor(const std::string& channelName):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-        _executionTime(0), _totalTasks(0){
+        _executionTime(0), _totalTasks(0), _lastPhaseId(0){
     int linger = 5000;
     _channel->setsockopt(NN_SOL_SOCKET, NN_LINGER, &linger, sizeof (linger));
     _chid = _channelRef.bind(channelName.c_str());
@@ -334,7 +349,8 @@ Monitor::Monitor(const std::string& channelName):
 }
 
 Monitor::Monitor(nn::socket& socket, uint chid):
-        _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0), _totalTasks(0){
+        _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0),
+        _totalTasks(0), _lastPhaseId(0){
     ;
 }
 
@@ -363,6 +379,8 @@ bool Monitor::getSample(ApplicationSample& sample, bool fromAll){
     assert(r == sizeof(m));
     if(m.type == MESSAGE_TYPE_SAMPLE_RES){
         sample = m.payload.sample;
+        _lastPhaseId = m.phaseId;
+        _lastTotalThreads = m.totalThreads;
         return true;
     }else if(m.type == MESSAGE_TYPE_STOP){
         _executionTime = m.payload.summary.time;
@@ -376,6 +394,15 @@ bool Monitor::getSample(ApplicationSample& sample, bool fromAll){
         throw runtime_error("Unexpected message type.");
     }
 }
+
+uint Monitor::getPhaseId() const{
+    return _lastPhaseId;
+}
+
+uint Monitor::getTotalThreads() const{
+    return _lastTotalThreads;
+}
+
 
 ulong Monitor::getExecutionTime(){
     return _executionTime;

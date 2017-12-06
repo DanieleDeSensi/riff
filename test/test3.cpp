@@ -40,6 +40,8 @@ int main(int argc, char** argv){
         usleep(MONITORING_INTERVAL);
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
+            std::cout << "PhaseId: " << mon.getPhaseId() << std::endl;
+            std::cout << "Total threads: " << mon.getTotalThreads() << std::endl;
 
             double expectedLatency = LATENCY*1000; // To nanoseconds
             double expectedUtilization = ((double)LATENCY / ((double) (LATENCY))) * 100;
@@ -74,6 +76,7 @@ int main(int argc, char** argv){
         for(size_t i = 0; i < ITERATIONS; i++){
             app.begin();
             usleep(LATENCY);
+            app.setPhaseId(i);
             app.end();
         }
         app.terminate();

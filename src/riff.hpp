@@ -442,6 +442,8 @@ typedef union Payload{
 typedef struct Message{
     MessageType type;
     Payload payload;
+    uint phaseId;
+    uint totalThreads;
 }Message;
 
 
@@ -504,6 +506,8 @@ private:
     std::vector<ThreadData> _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
+    uint _phaseId;
+    uint _totalThreads;
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -752,6 +756,40 @@ public:
     }
 
     /**
+     * Sets the number of threads contributing to this phase
+     * @param totalThreads The number of threads contributing to this phase.
+     * ATTENTION: This may be different from the number of threads you specified
+     * in the constructor. Indeed, you may have one thread calling the begin()/end()
+     * calls but more threads contributing to the computation. Consider for
+     * example this case:
+     *
+     * |---------------------------------------------|
+     * | for(uint i = 0; i < 100; i++){              |
+     * |     instr.begin();                          |
+     * |     #pragma omp parallel for num_threads(4) |
+     * |     for(uint j = 0; j < 100; j++){          |
+     * |         // ...compute...                    |
+     * |     }                                       |
+     * |     instr.end();                            |
+     * | }                                           |
+     * |---------------------------------------------|
+     *
+     * In this case, begin() and end() are called by one thread only (so you
+     * specify 1 in the constructor). However, the computation is executed
+     * by 4 threads, so you should specify 4 as second argument of the
+     * setPhaseId(...) call.
+     */
+    void setTotalThreads(uint totalThreads);
+
+    /**
+     * Notify the start of a new phase.
+     * @param phaseId A unique identifier for the phase.
+     * @param totalThreads The number of threads contributing to this phase
+     * (see setTotalThreads documentation).
+     */
+    void setPhaseId(uint phaseId, uint totalThreads = 0);
+
+    /**
      * This function must only be called once, when the parallel part
      * of the application terminates.
      * NOTE: It is not thread safe!
@@ -783,6 +821,8 @@ private:
     int _chid;
     ulong _executionTime;
     unsigned long long _totalTasks;
+    uint _lastPhaseId;
+    uint _lastTotalThreads;
 public:
     /**
      * Creates a monitor.
@@ -809,6 +849,19 @@ public:
     pid_t waitStart();
 
     bool getSample(ApplicationSample& sample, bool fromAll = false);
+
+    /**
+     * Gets the identifier of the last recorded phase.
+     * @return The identifier of the last recorded phase.
+     */
+    uint getPhaseId() const;
+
+    /**
+     * Gets the number of total threads executing a parallel phase.
+     * @return The number of total threads executing a parallel phase.
+     * If 0, this number is not known.
+     */
+    uint getTotalThreads() const;
 
     /**
      * Returns the execution time of the application (milliseconds).
