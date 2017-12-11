@@ -647,7 +647,6 @@ public:
                     tData.sample = ApplicationSample();
                     tData.idleTime = 0;
                     tData.sampleStartTime = now;
-                    // cppcheck-suppress assignBoolToPointer
                     *(tData.consolidate) = false;
                 }
 
