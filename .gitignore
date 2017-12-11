@@ -7,11 +7,13 @@ test/test1
 test/test2
 test/test3
 test/test4
+test/test5
 src/*.gcov
 src/*.gcda
 src/*.gcno
 test/*.gcov
 test/*.gcda
 test/*.gcno
+test/gcov/*.gcov
 demo/demo
 demo/stresstest
