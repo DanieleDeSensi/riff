@@ -13,7 +13,7 @@ demo:
 test:
 	$(MAKE) -C test -j
 cppcheck:
-	cppcheck --xml --xml-version=2 --enable=warning,performance,style --error-exitcode=1 -UNN_EXPORT . -isrc/external -itest 2> cppcheck-report.xml || (cat cppcheck-report.xml; exit 2) 
+	cppcheck --xml --xml-version=2 --enable=warning,performance,style --error-exitcode=1 --suppressions-list=./test/cppcheck/suppressions-list.txt -UNN_EXPORT . -isrc/external -itest 2> cppcheck-report.xml || (cat cppcheck-report.xml; exit 2) 
 gcov:
 	./test/gcov/gcov.sh
 develcheck:
