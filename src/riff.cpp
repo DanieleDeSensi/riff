@@ -44,49 +44,19 @@ unsigned long long getCurrentTimeNs(){
 #endif
 }
 
-inline bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
-    // If we need samples from all the threads
-    //       or 
-    // If this is the last thread and there are no 
-    // samples stored, then we need this sample.
-    return (fromAll ||
-            application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ALL || 
-            ((threadId == application->_threadData.size() - 1) && 
-            !updatedSamples && 
-            application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ONE));
-}
-
-inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll){
+inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples){
     if(*application->_threadData[threadId].consolidate){
-        if(thisSampleNeeded(application, threadId, updatedSamples, fromAll) &&
-           !application->_supportStop){
-            return true;
-        }
-
-        // If we don't need to wait for thread sample,
-        // stop waiting.
-        if(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_NONE || 
-           (application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ONE && (threadId != application->_threadData.size() - 1)) || 
-           application->_supportStop){
-            return false;
-        }
-        return true;
+        return !application->_supportStop;
     }
     return false;
 }
 
 void* applicationSupportThread(void* data){
     Application* application = static_cast<Application*>(data);
-    
-    // TODO: We only support ALL, the other modes will be soon deleted.
-    // To manage streaming applications with ebbs we need to manage it client side (i.e. if
-    // monitor doesn't receive a response for a while it will say bw = 0).
-    assert(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_ALL);
-    
+      
     while(!application->_supportStop){
         Message recvdMsg;
         int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), 0);
-        bool fromAll = recvdMsg.payload.fromAll;
         if(res == sizeof(recvdMsg)){
             assert(recvdMsg.type == MESSAGE_TYPE_SAMPLE_REQ);
             // Prepare response message.
@@ -106,7 +76,7 @@ void* applicationSupportThread(void* data){
 
             for(size_t i = 0; i < numThreads; i++){
                 // If needed, wait for thread to store a sample.
-                while(keepWaitingSample(application, i, updatedSamples, fromAll)){
+                while(keepWaitingSample(application, i, updatedSamples)){
                     // To wait, the idea is that after the consolidation request has been
                     // sent, samples should be stored at most after samplingLengthMs milliseconds.
                     // If that time is already elapsed, we just wait for one millisecond 
@@ -151,10 +121,8 @@ void* applicationSupportThread(void* data){
             if(updatedSamples){
                 if(application->_configuration.adjustBandwidth && 
                    updatedSamples != numThreads){
-                    // This can only happen if we didn't need to store
-                    // data from all the threads
                     if(!application->_supportStop){
-                        assert(application->_configuration.threadsNeeded != RIFF_THREADS_NEEDED_ALL);
+                        throw std::runtime_error("FATAL ERROR: !_supportStop");
                     }
                     msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (numThreads - updatedSamples);
                 }
@@ -168,9 +136,8 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.latency /= (updatedSamples - inconsistentSamples);
                 }
             }else{
-                // This can only happens if the threadsNeeded is NONE
                 if(!application->_supportStop){
-                    assert(application->_configuration.threadsNeeded == RIFF_THREADS_NEEDED_NONE);
+                    throw std::runtime_error("FATAL ERROR: !_supportStop");
                 }
                 msg.payload.sample.bandwidth = 0;
                 msg.payload.sample.latency = RIFF_VALUE_NOT_AVAILABLE;
@@ -262,23 +229,9 @@ void Application::setConfiguration(const ApplicationConfiguration& configuration
     _configuration = configuration;
 }
 
-void Application::setConfigurationStreaming(){
-    ApplicationConfiguration configuration;
-    configuration.threadsNeeded = RIFF_THREADS_NEEDED_NONE;
-    configuration.adjustBandwidth = true;
-    _configuration = configuration;
-}
-
-void Application::setConfigurationBatch(ThreadsNeeded threadsNeeded){
-    ApplicationConfiguration configuration;
-    configuration.threadsNeeded = threadsNeeded;
-    configuration.adjustBandwidth = true;
-    _configuration = configuration;
-}
-
 void Application::storeCustomValue(size_t index, double value, uint threadId){
     if(threadId > _threadData.size()){
-        throw new std::runtime_error("Wrong threadId specified (greater than number of threads).");
+        throw std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
     if(index < RIFF_MAX_CUSTOM_FIELDS){
         ThreadData& tData = _threadData[threadId];
@@ -369,10 +322,9 @@ pid_t Monitor::waitStart(){
     return m.payload.pid;
 }
 
-bool Monitor::getSample(ApplicationSample& sample, bool fromAll){
+bool Monitor::getSample(ApplicationSample& sample){
     Message m;
     m.type = MESSAGE_TYPE_SAMPLE_REQ;
-    m.payload.fromAll = fromAll;
     int r = _channelRef.send(&m, sizeof(m), 0);
     assert(r == sizeof(m));
     r = _channelRef.recv(&m, sizeof(m), 0);

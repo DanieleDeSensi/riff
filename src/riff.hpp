@@ -38,16 +38,6 @@
 
 namespace riff{
 
-// Represents the minimum number of
-// threads from which the data must
-// be collected before replying
-// to the monitor requests.
-typedef enum ThreadsNeeded{
-    RIFF_THREADS_NEEDED_NONE = 0, // We can reply even if no threads stored the sample
-    RIFF_THREADS_NEEDED_ONE, // We can reply if at least one thread stored the sample
-    RIFF_THREADS_NEEDED_ALL // We can reply only when all the threads stored the sample
-}ThreadsNeeded;
-
 // Configuration parameters for riff behaviour
 // when collecting samples. 
 typedef struct ApplicationConfiguration{
@@ -59,15 +49,7 @@ typedef struct ApplicationConfiguration{
     // [default = 10.0]
     double samplingLengthMs;
 
-    // Represents the minimum number of
-    // threads from which the data must
-    // be collected before replying
-    // to the monitor requests.
-    // [default = RIFF_THREADS_NEEDED_ALL]
-    ThreadsNeeded threadsNeeded;
-
-    // If true and if threadsNeeded is not RIFF_THREADS_NEEDED_ALL, 
-    // for the threads that didn't yet stored
+    // If true, for the threads that didn't yet stored
     // their sample, we estimate the bandwidth to be
     // the same of the other threads. This should be set to
     // true if you want to provide a consistent view
@@ -102,7 +84,6 @@ typedef struct ApplicationConfiguration{
 
     ApplicationConfiguration(){
         samplingLengthMs = 10.0;
-        threadsNeeded = RIFF_THREADS_NEEDED_ALL;
         adjustBandwidth = true;
         consistencyThreshold = 5.0;
     }
@@ -430,7 +411,6 @@ inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
 
 typedef union Payload{
     pid_t pid;
-    bool fromAll;
     ApplicationSample sample;
     struct{
         ulong time;
@@ -490,8 +470,7 @@ void* applicationSupportThread(void*);
 
 class Application{
     friend void waitSampleStore(Application* application);
-    friend bool thisSampleNeeded(Application* application, size_t threadId, size_t updatedSamples, bool fromAll);
-    friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples, bool fromAll);
+    friend bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples);
     friend void* applicationSupportThread(void*);
 private:
     ApplicationConfiguration _configuration;
@@ -562,31 +541,6 @@ public:
      * @param configuration The application configuration.
      **/
     void setConfiguration(const ApplicationConfiguration& configuration);
-
-    /**
-     * Sets the default application configuration for a streaming application.
-     * It will set:
-     *     - samplingLengthMs = default
-     *     - threadsNeeded = RIFF_THREADS_NEEDED_NONE
-     *     - adjustBandwidth = true
-     *     - consistencyThreshold = default
-     * MUST be called before calling begin() for the first time.
-     **/
-    void setConfigurationStreaming();
-
-    /**
-     * Sets the default application configuration for a batch application.
-     * It will set:
-     *     - samplingLengthMs = default
-     *     - threadsNeeded = as specified
-     *     - adjustBandwidth = true
-     *     - consistencyThreshold = default
-     * MUST be called before calling begin() for the first time.
-     * @param threadsNeeded Suggested RIFF_THREADS_NEEDED_ALL when 
-     *                      there are many iterations per second 
-     *                      (> numThreads * 10), RIFF_THREADS_NEEDED_ONE otherwise.
-     **/
-    void setConfigurationBatch(ThreadsNeeded threadsNeeded = RIFF_THREADS_NEEDED_ALL);
     
     /**
      * This function must be called at each loop iteration when the computation
@@ -848,7 +802,7 @@ public:
     
     pid_t waitStart();
 
-    bool getSample(ApplicationSample& sample, bool fromAll = false);
+    bool getSample(ApplicationSample& sample);
 
     /**
      * Gets the identifier of the last recorded phase.

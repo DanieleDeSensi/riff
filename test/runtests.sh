@@ -4,7 +4,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 
-for TESTNAME in test1 test2 test3 test4
+for TESTNAME in test1 test2 test3 test4 test5
 do
 # Ugly, but we need to run the application before the monitor.
     if [[ $TESTNAME != "test4" ]]; then

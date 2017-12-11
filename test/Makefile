@@ -1,4 +1,4 @@
-TARGET = test1 test2 test3 test4
+TARGET = test1 test2 test3 test4 test5
 
 .PHONY: all clean cleanall
 
