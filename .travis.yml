@@ -10,19 +10,14 @@ install:
   - sudo apt-get install -qq cppcheck
 
 script:
-  - make "COVERAGE_FLAGS=-fprofile-arcs -ftest-coverage"
-  # CppCheck
-  - make cppcheck || cat cppcheck-report.xml
-  # Tests
-  - make "COVERAGE_FLAGS=-DTOLERANCE=0.1 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov test
-  # Gcov
-  - cd src/ && gcov -r riff.cpp && cd ..
+  # Runs compilation, cppcheck, tests and coverage collection
+  - make develcheck
 
 after_success:
     # Remove unnecessary coverage files
-    - rm src/nn.hpp.gcov
+    #- rm src/nn.hpp.gcov
     # codecov.io
-    - bash <(curl -s https://codecov.io/bash) -X gcov -f 'src/*.gcov'
+    - bash <(curl -s https://codecov.io/bash) -X gcov -f 'test/gcov/*.gcov'
 
 notifications:
   email:

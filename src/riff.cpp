@@ -45,7 +45,7 @@ unsigned long long getCurrentTimeNs(){
 }
 
 inline bool keepWaitingSample(Application* application, size_t threadId, size_t updatedSamples){
-    if(*application->_threadData[threadId].consolidate){
+    if(*application->_threadData->at(threadId).consolidate){
         return !application->_supportStop;
     }
     return false;
@@ -66,11 +66,11 @@ void* applicationSupportThread(void* data){
 
             // Add the samples of all the threads.
             size_t updatedSamples = 0, inconsistentSamples = 0;
-            size_t numThreads = application->_threadData.size();
+            size_t numThreads = application->_threadData->size();
             std::vector<double> customVec[RIFF_MAX_CUSTOM_FIELDS];
 
             for(size_t i = 0; i < numThreads; i++){
-                *application->_threadData[i].consolidate = true;
+                *(application->_threadData->at(i).consolidate) = true;
             }
             unsigned long long consolidationTimestamp = getCurrentTimeNs();
 
@@ -90,7 +90,7 @@ void* applicationSupportThread(void* data){
                     }
                 }
 
-                ThreadData& toAdd = application->_threadData[i];
+                ThreadData& toAdd = application->_threadData->at(i);
                 if(!*toAdd.consolidate){
                     ApplicationSample& sample = toAdd.consolidatedSample;
                     if(sample.latency == RIFF_VALUE_INCONSISTENT){
@@ -175,7 +175,7 @@ Application::Application(const std::string& channelName, size_t numThreads,
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
-    _threadData.resize(numThreads);
+    _threadData = new std::vector<ThreadData>(numThreads);
     // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
@@ -187,7 +187,7 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
         _totalThreads(0){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
-    _threadData.resize(numThreads);
+    _threadData = new std::vector<ThreadData>(numThreads);
     // Pthread Create must be the last thing we do in constructor
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
@@ -198,6 +198,7 @@ Application::~Application(){
         _channel->shutdown(_chid);
         delete _channel;
     }
+    delete _threadData;
 }    
 
 void Application::notifyStart(){
@@ -230,11 +231,11 @@ void Application::setConfiguration(const ApplicationConfiguration& configuration
 }
 
 void Application::storeCustomValue(size_t index, double value, uint threadId){
-    if(threadId > _threadData.size()){
+    if(threadId > _threadData->size()){
         throw std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
     if(index < RIFF_MAX_CUSTOM_FIELDS){
-        ThreadData& tData = _threadData[threadId];
+        ThreadData& tData = _threadData->at(threadId);
         tData.sample.customFields[index] = value;
     }else{
         throw std::runtime_error("Custom value index out of bound. Please "
@@ -253,7 +254,7 @@ void Application::setPhaseId(uint phaseId, uint totalThreads){
 
 void Application::terminate(){
     unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max(); 
-    for(ThreadData& td : _threadData){
+    for(ThreadData& td : *_threadData){
         // If I was doing sampling, I could have spurious
         // tasks that I didn't record. For this reason,
         // I record them now.

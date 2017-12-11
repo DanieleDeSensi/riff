@@ -464,6 +464,9 @@ typedef struct ThreadData{
         memset(&padding, 0, sizeof(padding));
         consolidate = new std::atomic<bool>(false);
     }
+
+    ThreadData(ThreadData const&) = delete;
+    ThreadData& operator=(ThreadData const&) = delete;
 }ThreadData;
 
 void* applicationSupportThread(void*);
@@ -482,7 +485,7 @@ private:
     pthread_mutex_t _mutex;
     pthread_t _supportTid;
     bool _supportStop;
-    std::vector<ThreadData> _threadData;
+    std::vector<ThreadData>* _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
     uint _phaseId;
@@ -552,7 +555,7 @@ public:
      *        in the constructor.
      */
     inline void begin(uint threadId = 0){
-        ThreadData& tData = _threadData[threadId];
+        ThreadData& tData = _threadData->at(threadId);
 
         // Equivalent to
         // tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
@@ -644,7 +647,7 @@ public:
                     tData.sample = ApplicationSample();
                     tData.idleTime = 0;
                     tData.sampleStartTime = now;
-                    *tData.consolidate = false;
+                    *(tData.consolidate) = false;
                 }
 
                 tData.samplingLength = newSamplingLength;
@@ -691,7 +694,7 @@ public:
      *        in the constructor.
      */
     inline void end(uint threadId = 0){
-        ThreadData& tData = _threadData[threadId];
+        ThreadData& tData = _threadData->at(threadId);
         // Skip
         if(tData.currentSample){
             return;
