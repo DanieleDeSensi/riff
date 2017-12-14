@@ -93,14 +93,14 @@ void* applicationSupportThread(void* data){
                 ThreadData& toAdd = application->_threadData->at(i);
                 if(!*toAdd.consolidate){
                     ApplicationSample& sample = toAdd.consolidatedSample;
-                    if(sample.latency == RIFF_VALUE_INCONSISTENT){
+                    if(sample.inconsistent){
                         ++inconsistentSamples;
                     }else{
                         sample.latency /= sample.numTasks;
                         msg.payload.sample.loadPercentage += sample.loadPercentage;
                         msg.payload.sample.latency += sample.latency;
                     }
-                    msg.payload.sample.bandwidth += sample.bandwidth;
+                    msg.payload.sample.throughput += sample.throughput;
                     msg.payload.sample.numTasks += sample.numTasks;
 
                     ++updatedSamples;
@@ -119,18 +119,17 @@ void* applicationSupportThread(void* data){
 
             // If at least one thread is progressing.
             if(updatedSamples){
-                if(application->_configuration.adjustBandwidth && 
+                if(application->_configuration.adjustThroughput &&
                    updatedSamples != numThreads){
                     if(!application->_supportStop){
                         throw std::runtime_error("FATAL ERROR: !_supportStop");
                     }
-                    msg.payload.sample.bandwidth += (msg.payload.sample.bandwidth / updatedSamples) * (numThreads - updatedSamples);
+                    msg.payload.sample.throughput += (msg.payload.sample.throughput / updatedSamples) * (numThreads - updatedSamples);
                 }
 
                 // If we collected only inconsistent samples, we mark latency and load as inconsistent.
                 if(inconsistentSamples == updatedSamples){
-                    msg.payload.sample.loadPercentage = RIFF_VALUE_INCONSISTENT;
-                    msg.payload.sample.latency = RIFF_VALUE_INCONSISTENT;
+                    msg.payload.sample.inconsistent = true;
                 }else{
                     msg.payload.sample.loadPercentage /= (updatedSamples - inconsistentSamples);
                     msg.payload.sample.latency /= (updatedSamples - inconsistentSamples);
@@ -139,8 +138,8 @@ void* applicationSupportThread(void* data){
                 if(!application->_supportStop){
                     throw std::runtime_error("FATAL ERROR: !_supportStop");
                 }
-                msg.payload.sample.bandwidth = 0;
-                msg.payload.sample.latency = RIFF_VALUE_NOT_AVAILABLE;
+                msg.payload.sample.throughput = 0;
+                msg.payload.sample.latency = 0;
                 msg.payload.sample.loadPercentage = 0;
                 msg.payload.sample.numTasks = 0;
             }

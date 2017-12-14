@@ -31,11 +31,6 @@
 #define RIFF_DEFAULT_SAMPLING_LENGTH 1
 #endif
 
-// This value is used to mark an inconsistent value.
-#define RIFF_VALUE_INCONSISTENT std::numeric_limits<double>::min()
-// This value is used when was not possible to collect it.
-#define RIFF_VALUE_NOT_AVAILABLE std::numeric_limits<double>::min() + 0.001
-
 namespace riff{
 
 // Configuration parameters for riff behaviour
@@ -50,16 +45,16 @@ typedef struct ApplicationConfiguration{
     double samplingLengthMs;
 
     // If true, for the threads that didn't yet stored
-    // their sample, we estimate the bandwidth to be
+    // their sample, we estimate the throughput to be
     // the same of the other threads. This should be set to
     // true if you want to provide a consistent view
-    // of the application bandwidth. If false,
-    // bandwidth will change accordingly to how many threads
+    // of the application throughput. If false,
+    // throughput will change accordingly to how many threads
     // already stored their samples and we would have
     // fluctuations caused by the way in which data is collected
     // but not actually present in the application.
     // [default = true]
-    bool adjustBandwidth;
+    bool adjustThroughput;
 
     // When sampling is applied, the latency estimation
     // (and the idle time/utilization estimation) could be 
@@ -77,14 +72,14 @@ typedef struct ApplicationConfiguration{
     // If the estimated time (computed from latency and idle time)
     // is more than consistencyThreshold% different from the
     // actual time, we will mark latency and utilization as
-    // inconsistent. Bandwidth computation and tasks count are never
+    // inconsistent. Throughput computation and tasks count are never
     // affected by inconsistencies.
     // [default = 5.0]
     double consistencyThreshold;
 
     ApplicationConfiguration(){
         samplingLengthMs = 10.0;
-        adjustBandwidth = true;
+        adjustThroughput = true;
         consistencyThreshold = 5.0;
     }
 }ApplicationConfiguration;
@@ -106,17 +101,18 @@ typedef enum MessageType{
  * This struct represents a sample of values taken from an adaptive node.
  */
 typedef struct ApplicationSample{
+    // If true, the latency and loadPercentage computations are not reliable.
+    // If you need reliable values for latency and loadPercentage, please set
+    // samplingLengthMs to 0 in riff configuration.
+    bool inconsistent;
+
     // The percentage ([0, 100]) of time that the node spent in the computation.
-    // If equal to RIFF_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
-    // riff configuration.
     double loadPercentage;
 
-    // The bandwidth of the application.
-    double bandwidth;
+    // The throughput of the application.
+    double throughput;
 
     // The average latency (nanoseconds).
-    // If equal to RIFF_VALUE_INCONSISTENT, please set samplingLengthMs to 0 in 
-    // riff configuration.
     double latency;
 
     // The number of computed tasks.
@@ -125,7 +121,8 @@ typedef struct ApplicationSample{
     // Custom user fields.
     double customFields[RIFF_MAX_CUSTOM_FIELDS];
 
-    ApplicationSample():loadPercentage(0), bandwidth(0),
+    ApplicationSample():inconsistent(false),
+                        loadPercentage(0), throughput(0),
                         latency(0), numTasks(0){
         // We do not use memset due to cppcheck warnings.
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
@@ -134,7 +131,8 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample(ApplicationSample const& sample):
-        loadPercentage(sample.loadPercentage), bandwidth(sample.bandwidth),
+        inconsistent(sample.inconsistent),
+        loadPercentage(sample.loadPercentage), throughput(sample.throughput),
         latency(sample.latency), numTasks(sample.numTasks){
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] = sample.customFields[i];
@@ -144,8 +142,9 @@ typedef struct ApplicationSample{
     void swap(ApplicationSample& x){
         using std::swap;
 
+        swap(inconsistent, x.inconsistent);
         swap(loadPercentage, x.loadPercentage);
-        swap(bandwidth, x.bandwidth);
+        swap(throughput, x.throughput);
         swap(latency, x.latency);
         swap(numTasks, x.numTasks);
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
@@ -159,33 +158,14 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator+=(const ApplicationSample& rhs){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage += rhs.loadPercentage;
-        }else{
-            loadPercentage = RIFF_VALUE_INCONSISTENT;
+        if(rhs.inconsistent){
+            inconsistent = rhs.inconsistent;
         }
 
-        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
-           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth += rhs.bandwidth;
-        }else{
-            bandwidth = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(latency != RIFF_VALUE_INCONSISTENT && 
-           rhs.latency != RIFF_VALUE_INCONSISTENT){
-            latency += rhs.latency;
-        }else{
-            latency = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(numTasks != RIFF_VALUE_INCONSISTENT && 
-           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks += rhs.numTasks;
-        }else{
-            numTasks = RIFF_VALUE_INCONSISTENT;        
-        }
+        loadPercentage += rhs.loadPercentage;
+        throughput += rhs.throughput;
+        latency += rhs.latency;
+        numTasks += rhs.numTasks;
 
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] += rhs.customFields[i];
@@ -194,33 +174,14 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator-=(const ApplicationSample& rhs){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage -= rhs.loadPercentage;
-        }else{
-            loadPercentage = RIFF_VALUE_INCONSISTENT;
+        if(rhs.inconsistent){
+            inconsistent = rhs.inconsistent;
         }
 
-        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
-           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth -= rhs.bandwidth;
-        }else{
-            bandwidth = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(latency != RIFF_VALUE_INCONSISTENT && 
-           rhs.latency != RIFF_VALUE_INCONSISTENT){
-            latency -= rhs.latency;
-        }else{
-            latency = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(numTasks != RIFF_VALUE_INCONSISTENT && 
-           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks -= rhs.numTasks;
-        }else{
-            numTasks = RIFF_VALUE_INCONSISTENT;        
-        }
+        loadPercentage -= rhs.loadPercentage;
+        throughput -= rhs.throughput;
+        latency -= rhs.latency;
+        numTasks -= rhs.numTasks;
 
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] -= rhs.customFields[i];
@@ -229,33 +190,14 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator*=(const ApplicationSample& rhs){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage *= rhs.loadPercentage;
-        }else{
-            loadPercentage = RIFF_VALUE_INCONSISTENT;
+        if(rhs.inconsistent){
+            inconsistent = rhs.inconsistent;
         }
 
-        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
-           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth *= rhs.bandwidth;
-        }else{
-            bandwidth = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(latency != RIFF_VALUE_INCONSISTENT && 
-           rhs.latency != RIFF_VALUE_INCONSISTENT){
-            latency *= rhs.latency;
-        }else{
-            latency = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(numTasks != RIFF_VALUE_INCONSISTENT && 
-           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks *= rhs.numTasks;
-        }else{
-            numTasks = RIFF_VALUE_INCONSISTENT;        
-        }
+        loadPercentage *= rhs.loadPercentage;
+        throughput *= rhs.throughput;
+        latency *= rhs.latency;
+        numTasks *= rhs.numTasks;
 
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= rhs.customFields[i];
@@ -264,33 +206,14 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample& operator/=(const ApplicationSample& rhs){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT && 
-           rhs.loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage /= rhs.loadPercentage;
-        }else{
-            loadPercentage = RIFF_VALUE_INCONSISTENT;
+        if(rhs.inconsistent){
+            inconsistent = rhs.inconsistent;
         }
 
-        if(bandwidth != RIFF_VALUE_INCONSISTENT && 
-           rhs.bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth /= rhs.bandwidth;
-        }else{
-            bandwidth = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(latency != RIFF_VALUE_INCONSISTENT && 
-           rhs.latency != RIFF_VALUE_INCONSISTENT){
-            latency /= rhs.latency;
-        }else{
-            latency = RIFF_VALUE_INCONSISTENT;
-        }
-
-        if(numTasks != RIFF_VALUE_INCONSISTENT && 
-           rhs.numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks /= rhs.numTasks;
-        }else{
-            numTasks = RIFF_VALUE_INCONSISTENT;        
-        }
+        loadPercentage /= rhs.loadPercentage;
+        throughput /= rhs.throughput;
+        latency /= rhs.latency;
+        numTasks /= rhs.numTasks;
 
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= rhs.customFields[i];
@@ -299,18 +222,10 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample operator/=(double x){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage /= x;
-        }
-        if(bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth /= x;
-        }
-        if(latency != RIFF_VALUE_INCONSISTENT){
-            latency /= x;
-        }
-        if(numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks /= x;
-        }
+        loadPercentage /= x;
+        throughput /= x;
+        latency /= x;
+        numTasks /= x;
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] /= x;
         }
@@ -318,18 +233,10 @@ typedef struct ApplicationSample{
     }
 
     ApplicationSample operator*=(double x){
-        if(loadPercentage != RIFF_VALUE_INCONSISTENT){
-            loadPercentage *= x;
-        }
-        if(bandwidth != RIFF_VALUE_INCONSISTENT){
-            bandwidth *= x;
-        }
-        if(latency != RIFF_VALUE_INCONSISTENT){
-            latency *= x;
-        }
-        if(numTasks != RIFF_VALUE_INCONSISTENT){
-            numTasks *= x;
-        }
+        loadPercentage *= x;
+        throughput *= x;
+        latency *= x;
+        numTasks *= x;
         for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
             customFields[i] *= x;
         }
@@ -380,8 +287,9 @@ inline ApplicationSample operator/(const ApplicationSample& lhs, double x){
 
 inline std::ostream& operator<<(std::ostream& os, const ApplicationSample& obj){
     os << "[";
+    os << "Inconsistent: " << obj.inconsistent << " ";
     os << "Load: " << obj.loadPercentage << " ";
-    os << "Bandwidth: " << obj.bandwidth << " ";
+    os << "Throughput: " << obj.throughput << " ";
     os << "Latency: " << obj.latency << " ";
     os << "NumTasks: " << obj.numTasks << " ";
     for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
@@ -394,9 +302,11 @@ inline std::ostream& operator<<(std::ostream& os, const ApplicationSample& obj){
 inline std::istream& operator>>(std::istream& is, ApplicationSample& sample){
     is.ignore(std::numeric_limits<std::streamsize>::max(), '[');
     is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
+    is >> sample.inconsistent;
+    is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
     is >> sample.loadPercentage;
     is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
-    is >> sample.bandwidth;
+    is >> sample.throughput;
     is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
     is >> sample.latency;
     is.ignore(std::numeric_limits<std::streamsize>::max(), ':');
@@ -611,7 +521,7 @@ public:
                 unsigned long long sampleTimeEstimated = (tData.sample.latency + tData.idleTime);
                 ulong oldSamplingLength = tData.samplingLength, newSamplingLength = tData.samplingLength;
 
-                tData.sample.bandwidth = tData.sample.numTasks /
+                tData.sample.throughput = tData.sample.numTasks /
                                          (sampleTime / 1000000000.0); // From tasks/ns to tasks/sec
                 tData.sample.loadPercentage = (tData.sample.latency / sampleTime) * 100.0;
 
@@ -641,8 +551,7 @@ public:
                             throw std::runtime_error("FATAL ERROR: it is not possible to have inconsistency if sampling is not applied.");
 #endif
                         }
-                        tData.consolidatedSample.latency = RIFF_VALUE_INCONSISTENT;
-                        tData.consolidatedSample.loadPercentage = RIFF_VALUE_INCONSISTENT;
+                        tData.consolidatedSample.inconsistent = true;
                     }
                     tData.sample = ApplicationSample();
                     tData.idleTime = 0;

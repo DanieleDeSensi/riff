@@ -24,7 +24,7 @@
 
 int main(int argc, char** argv){
     riff::ApplicationSample sample;
-    sample.bandwidth = 1;
+    sample.throughput = 1;
     sample.latency = 2;
     sample.loadPercentage = 3;
     sample.numTasks = 4;
@@ -37,7 +37,7 @@ int main(int argc, char** argv){
 
     // Multiplication by constant
     sample2 *= 10;
-    assert(sample2.bandwidth == sample.bandwidth*10);
+    assert(sample2.throughput == sample.throughput*10);
     assert(sample2.latency == sample.latency*10);
     assert(sample2.loadPercentage == sample.loadPercentage*10);
     assert(sample2.numTasks == sample.numTasks*10);
@@ -47,7 +47,7 @@ int main(int argc, char** argv){
 
     // Division by constant
     sample2 /= 10;
-    assert(sample2.bandwidth == sample.bandwidth);
+    assert(sample2.throughput == sample.throughput);
     assert(sample2.latency == sample.latency);
     assert(sample2.loadPercentage == sample.loadPercentage);
     assert(sample2.numTasks == sample.numTasks);
@@ -57,7 +57,8 @@ int main(int argc, char** argv){
 
     // Copy constructor and sum
     riff::ApplicationSample r(sample + sample2);
-    assert(r.bandwidth == sample.bandwidth + sample2.bandwidth);
+    assert(!sample.inconsistent && !sample2.inconsistent && !r.inconsistent);
+    assert(r.throughput == sample.throughput + sample2.throughput);
     assert(r.latency == sample.latency + sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage + sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks + sample2.numTasks);
@@ -67,7 +68,7 @@ int main(int argc, char** argv){
 
     // Subtraction
     r = sample - sample2;
-    assert(r.bandwidth == 0);
+    assert(r.throughput == 0);
     assert(r.latency == 0);
     assert(r.loadPercentage == 0);
     assert(r.numTasks == 0);
@@ -77,7 +78,7 @@ int main(int argc, char** argv){
 
     // Multiplication
     r = sample * sample2;
-    assert(r.bandwidth == sample.bandwidth * sample2.bandwidth);
+    assert(r.throughput == sample.throughput * sample2.throughput);
     assert(r.latency == sample.latency * sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage * sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks * sample2.numTasks);
@@ -86,8 +87,10 @@ int main(int argc, char** argv){
     }
 
     // Division
+    sample2.inconsistent = true;
     r = sample / sample2;
-    assert(r.bandwidth == sample.bandwidth / sample2.bandwidth);
+    assert(r.inconsistent);
+    assert(r.throughput == sample.throughput / sample2.throughput);
     assert(r.latency == sample.latency / sample2.latency);
     assert(r.loadPercentage == sample.loadPercentage / sample2.loadPercentage);
     assert(r.numTasks == sample.numTasks / sample2.numTasks);
@@ -96,15 +99,16 @@ int main(int argc, char** argv){
     }
 
     // Load
-    std::string fieldStr = "[Load: 90 Bandwidth: 100 Latency: 200 NumTasks: 300 "
+    std::string fieldStr = "[Inconsistent: 0 Load: 90 Throughput: 100 Latency: 200 NumTasks: 300 "
                            "CustomField0: 0 CustomField1: 1 CustomField2: 2 "
                            "CustomField3: 3 CustomField4: 4 CustomField5: 5 "
                            "CustomField6: 6 CustomField7: 7 CustomField8: 8 "
                            "CustomField9: 9]";
     std::stringstream ss(fieldStr);
     ss >> sample;
+    assert(!sample.inconsistent);
     assert(sample.loadPercentage == 90);
-    assert(sample.bandwidth == 100);
+    assert(sample.throughput == 100);
     assert(sample.latency == 200);
     assert(sample.numTasks == 300);
     for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
