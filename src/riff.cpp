@@ -134,14 +134,8 @@ void* applicationSupportThread(void* data){
                     msg.payload.sample.loadPercentage /= (updatedSamples - inconsistentSamples);
                     msg.payload.sample.latency /= (updatedSamples - inconsistentSamples);
                 }
-            }else{
-                if(!application->_supportStop){
-                    throw std::runtime_error("FATAL ERROR: !_supportStop");
-                }
-                msg.payload.sample.throughput = 0;
-                msg.payload.sample.latency = 0;
-                msg.payload.sample.loadPercentage = 0;
-                msg.payload.sample.numTasks = 0;
+            }else if(!application->_supportStop){
+                throw std::runtime_error("FATAL ERROR: !_supportStop");
             }
             
             // Aggregate custom values.
