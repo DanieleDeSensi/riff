@@ -332,8 +332,8 @@ typedef union Payload{
 typedef struct Message{
     MessageType type;
     Payload payload;
-    uint phaseId;
-    uint totalThreads;
+    unsigned int phaseId;
+    unsigned int totalThreads;
 }Message;
 
 
@@ -398,8 +398,8 @@ private:
     std::vector<ThreadData>* _threadData;
     ulong _executionTime;
     unsigned long long _totalTasks;
-    uint _phaseId;
-    uint _totalThreads;
+    unsigned int _phaseId;
+    unsigned int _totalThreads;
     bool _inconsistentSample;
 
     // We are sure it is called by at most one thread.
@@ -440,7 +440,7 @@ public:
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
-    Application(nn::socket& socket, uint chid, 
+    Application(nn::socket& socket, unsigned int chid, 
                 size_t numThreads = 1,
                 Aggregator* aggregator = NULL);
 
@@ -465,7 +465,7 @@ public:
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
      */
-    inline void begin(uint threadId = 0){
+    inline void begin(unsigned int threadId = 0){
         ThreadData& tData = _threadData->at(threadId);
 
         // Equivalent to
@@ -592,7 +592,7 @@ public:
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
      */
-    void storeCustomValue(size_t index, double value, uint threadId = 0);
+    void storeCustomValue(size_t index, double value, unsigned int threadId = 0);
 
     /**
      * This function must be called at each loop iteration when the computation
@@ -603,7 +603,7 @@ public:
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
      */
-    inline void end(uint threadId = 0){
+    inline void end(unsigned int threadId = 0){
         ThreadData& tData = _threadData->at(threadId);
         // Skip
         if(tData.currentSample){
@@ -646,7 +646,7 @@ public:
      * by 4 threads, so you should specify 4 as second argument of the
      * setPhaseId(...) call.
      */
-    void setTotalThreads(uint totalThreads);
+    void setTotalThreads(unsigned int totalThreads);
 
     /**
      * Notify the start of a new phase.
@@ -654,7 +654,7 @@ public:
      * @param totalThreads The number of threads contributing to this phase
      * (see setTotalThreads documentation).
      */
-    void setPhaseId(uint phaseId, uint totalThreads = 0);
+    void setPhaseId(unsigned int phaseId, unsigned int totalThreads = 0);
 
     /**
      * This function must only be called once, when the parallel part
@@ -703,8 +703,8 @@ private:
     int _chid;
     ulong _executionTime;
     unsigned long long _totalTasks;
-    uint _lastPhaseId;
-    uint _lastTotalThreads;
+    unsigned int _lastPhaseId;
+    unsigned int _lastTotalThreads;
 public:
     /**
      * Creates a monitor.
@@ -721,7 +721,7 @@ public:
      * been called on it.
      * @param chid The channel identifier.
      **/
-    Monitor(nn::socket& socket, uint chid);
+    Monitor(nn::socket& socket, unsigned int chid);
 
     ~Monitor();
 
@@ -747,14 +747,14 @@ public:
      * Gets the identifier of the last recorded phase.
      * @return The identifier of the last recorded phase.
      */
-    uint getPhaseId() const;
+    unsigned int getPhaseId() const;
 
     /**
      * Gets the number of total threads executing a parallel phase.
      * @return The number of total threads executing a parallel phase.
      * If 0, this number is not known.
      */
-    uint getTotalThreads() const;
+    unsigned int getTotalThreads() const;
 
     /**
      * Returns the execution time of the application (milliseconds).

@@ -173,7 +173,7 @@ Application::Application(const std::string& channelName, size_t numThreads,
     pthread_create(&_supportTid, NULL, applicationSupportThread, (void*) this);
 }
 
-Application::Application(nn::socket& socket, uint chid, size_t numThreads,
+Application::Application(nn::socket& socket, unsigned int chid, size_t numThreads,
                          Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
         _aggregator(aggregator), _executionTime(0), _totalTasks(0), _phaseId(0),
@@ -223,7 +223,7 @@ void Application::setConfiguration(const ApplicationConfiguration& configuration
     _configuration = configuration;
 }
 
-void Application::storeCustomValue(size_t index, double value, uint threadId){
+void Application::storeCustomValue(size_t index, double value, unsigned int threadId){
     if(threadId > _threadData->size()){
         throw std::runtime_error("Wrong threadId specified (greater than number of threads).");
     }
@@ -236,11 +236,11 @@ void Application::storeCustomValue(size_t index, double value, uint threadId){
     }
 }
 
-void Application::setTotalThreads(uint totalThreads){
+void Application::setTotalThreads(unsigned int totalThreads){
     _totalThreads = totalThreads;
 }
 
-void Application::setPhaseId(uint phaseId, uint totalThreads){
+void Application::setPhaseId(unsigned int phaseId, unsigned int totalThreads){
     _phaseId = phaseId;
     setTotalThreads(totalThreads);
 }
@@ -299,7 +299,7 @@ Monitor::Monitor(const std::string& channelName):
     assert(_chid >= 0);
 }
 
-Monitor::Monitor(nn::socket& socket, uint chid):
+Monitor::Monitor(nn::socket& socket, unsigned int chid):
         _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0),
         _totalTasks(0), _lastPhaseId(0){
     ;
@@ -345,11 +345,11 @@ bool Monitor::getSample(ApplicationSample& sample){
     }
 }
 
-uint Monitor::getPhaseId() const{
+unsigned int Monitor::getPhaseId() const{
     return _lastPhaseId;
 }
 
-uint Monitor::getTotalThreads() const{
+unsigned int Monitor::getTotalThreads() const{
     return _lastTotalThreads;
 }
 
