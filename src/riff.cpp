@@ -163,7 +163,7 @@ Application::Application(const std::string& channelName, size_t numThreads,
                          Aggregator* aggregator):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
         _started(false), _aggregator(aggregator), _executionTime(0),
-        _totalTasks(0), _phaseId(0), _totalThreads(0), _inconsistentSample(true){
+        _totalTasks(0), _phaseId(0), _totalThreads(0), _inconsistentSample(false){
     _chid = _channelRef.connect(channelName.c_str());
     assert(_chid >= 0);
     pthread_mutex_init(&_mutex, NULL);
@@ -177,7 +177,7 @@ Application::Application(nn::socket& socket, uint chid, size_t numThreads,
                          Aggregator* aggregator):
         _channel(NULL), _channelRef(socket), _chid(chid), _started(false),
         _aggregator(aggregator), _executionTime(0), _totalTasks(0), _phaseId(0),
-        _totalThreads(0), _inconsistentSample(true){
+        _totalThreads(0), _inconsistentSample(false){
     pthread_mutex_init(&_mutex, NULL);
     _supportStop = false;
     _threadData = new std::vector<ThreadData>(numThreads);
