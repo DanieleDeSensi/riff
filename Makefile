@@ -1,8 +1,8 @@
 export CC                    = gcc
 export CXX                   = g++
 export OPTIMIZE_FLAGS        = -O3
-export CXXFLAGS              = $(COVERAGE_FLAGS) -Wall -pedantic --std=c++11
-export LDLIBS                = $(COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lriff -lanl
+export CXXFLAGS              = $(RIFF_COVERAGE_FLAGS) -Wall -pedantic --std=c++11
+export LDLIBS                = $(RIFF_COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lriff -lanl
 
 .PHONY: all demo test cppcheck clean cleanall develcheck cppcheck gcov
 
@@ -17,8 +17,8 @@ cppcheck:
 gcov:
 	./test/gcov/gcov.sh
 develcheck:
-	$(MAKE) "COVERAGE_FLAGS=-fprofile-arcs -ftest-coverage" && $(MAKE) cppcheck && \
-	$(MAKE) "COVERAGE_FLAGS=-DTOLERANCE=0.1 -fprofile-arcs -ftest-coverage" COVERAGE_LIBS=-lgcov test && $(MAKE) gcov
+	$(MAKE) "RIFF_COVERAGE_FLAGS=-fprofile-arcs -ftest-coverage" && $(MAKE) cppcheck && \
+	$(MAKE) "RIFF_COVERAGE_FLAGS=-DTOLERANCE=0.1 -fprofile-arcs -ftest-coverage" RIFF_COVERAGE_LIBS=-lgcov test && $(MAKE) gcov
 clean:
 	$(MAKE) -C src clean
 	$(MAKE) -C demo clean

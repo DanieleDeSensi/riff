@@ -400,6 +400,7 @@ private:
     unsigned long long _totalTasks;
     uint _phaseId;
     uint _totalThreads;
+    bool _inconsistentSample;
 
     // We are sure it is called by at most one thread.
     void notifyStart();
@@ -678,6 +679,21 @@ public:
      * of begin() to the last call of end().
      */
     unsigned long long getTotalTasks();
+
+    /**
+     * Sets all the subsequent samples as inconsistent (i.e. latency and
+     * loadPercentage may be erroneous.
+     * For example, consider an application composed by two pipelined
+     * threads, i.e. a sender (S) and a receiver (R).
+     * If we instrument only the receiver R, we would have a correct
+     * throughput measurement but an inconsistency latency and loadPercentage
+     * measurement. Indeed, to correctly measure latency we would need
+     * to instrument both S and R, but this would require storing individual
+     * latencies for each message sent from S to R. This is not possible at
+     * the moment. So we provide the possibility to notify this situation
+     * by explicitly marking the latency and loadPercentage as inconsistent.
+     **/
+    void markInconsistentSamples();
 };
 
 class Monitor{
@@ -712,8 +728,19 @@ public:
     Monitor(const Monitor& m) = delete;
     Monitor& operator=(Monitor const &x) = delete;
     
+    /**
+     * Waits for an application to start.
+     * @return The pid (process identifier) of the monitored application.
+     **/
     pid_t waitStart();
 
+    /**
+     * Returns the current sample.
+     * @param sample The returned sample.
+     * @return True if the sample has been succesfully stored, 
+     * False if the application terminated and thus there are 
+     * no samples to be stored.
+     **/
     bool getSample(ApplicationSample& sample);
 
     /**
