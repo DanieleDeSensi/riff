@@ -292,7 +292,7 @@ void Application::markInconsistentSamples(){
 
 Monitor::Monitor(const std::string& channelName):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
-        _executionTime(0), _totalTasks(0), _lastPhaseId(0){
+        _executionTime(0), _totalTasks(0), _lastPhaseId(0), _lastTotalThreads(0){
     int linger = 5000;
     _channel->setsockopt(NN_SOL_SOCKET, NN_LINGER, &linger, sizeof (linger));
     _chid = _channelRef.bind(channelName.c_str());
@@ -301,7 +301,7 @@ Monitor::Monitor(const std::string& channelName):
 
 Monitor::Monitor(nn::socket& socket, unsigned int chid):
         _channel(NULL), _channelRef(socket), _chid(chid), _executionTime(0),
-        _totalTasks(0), _lastPhaseId(0){
+        _totalTasks(0), _lastPhaseId(0), _lastTotalThreads(0){
     ;
 }
 
