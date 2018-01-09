@@ -16,21 +16,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-
-//  Windows
-#ifdef _WIN32 
-#include <intrin.h>
-inline uint64_t rdtsc(){
-    return __rdtsc();
-}
-//  Linux/GCC
-#else
-inline uint64_t rdtsc(){
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return ((uint64_t)hi << 32) | lo;
-}
-#endif
+#include "getticks.h"
 
 unsigned long getNanoSeconds(){
     struct timespec spec;
@@ -42,11 +28,11 @@ double getTicksPerNanosec(){
     double x = 0.691812048120;
 
     unsigned long start = getNanoSeconds();
-    uint64_t t1 = rdtsc();
-    while(rdtsc() - t1 < 1000000){
+    uint64_t t1 = getticks();
+    while(getticks() - t1 < 1000000){
         x = std::sin(x);
     }
-    uint64_t t2 = rdtsc();
+    uint64_t t2 = getticks();
     unsigned long end = getNanoSeconds();
 
     std::ostringstream sstream;

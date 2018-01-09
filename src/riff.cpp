@@ -9,6 +9,7 @@
 
 #include "external/cppnanomsg/nn.hpp"
 
+#include "getticks.h"
 #include "riff.hpp"
 
 #include <cmath>
@@ -35,7 +36,7 @@ namespace riff{
 
 unsigned long long getCurrentTimeNs(){
 #ifdef RIFF_NS_PER_TICK 
-    return rdtsc() / RIFF_NS_PER_TICK;
+    return getticks() / RIFF_NS_PER_TICK;
 #else
     struct timespec tp;
     int r = clock_gettime(CLOCK_MONOTONIC, &tp);
