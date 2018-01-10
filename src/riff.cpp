@@ -294,8 +294,6 @@ void Application::markInconsistentSamples(){
 Monitor::Monitor(const std::string& channelName):
         _channel(new nn::socket(AF_SP, NN_PAIR)), _channelRef(*_channel),
         _executionTime(0), _totalTasks(0), _lastPhaseId(0), _lastTotalThreads(0){
-    int linger = 5000;
-    _channel->setsockopt(NN_SOL_SOCKET, NN_LINGER, &linger, sizeof (linger));
     _chid = _channelRef.bind(channelName.c_str());
     assert(_chid >= 0);
 }
@@ -340,6 +338,7 @@ bool Monitor::getSample(ApplicationSample& sample){
         m.type = MESSAGE_TYPE_STOPACK;
         r = _channelRef.send(&m, sizeof(m), 0);
         assert(r == sizeof(m));
+        sleep(1); // To be sure application receives the ACK (we cannot use linger since it doesn't work https://github.com/nanomsg/nanomsg/issues/799)
         return false;
     }else{
         throw runtime_error("Unexpected message type.");
