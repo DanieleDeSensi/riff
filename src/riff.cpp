@@ -35,7 +35,7 @@ using namespace std;
 namespace riff{
 
 unsigned long long getCurrentTimeNs(){
-#ifdef RIFF_NS_PER_TICK 
+#ifdef RIFF_NS_PER_TICK
     return getticks() / RIFF_NS_PER_TICK;
 #else
     struct timespec tp;
@@ -54,7 +54,7 @@ inline bool keepWaitingSample(Application* application, size_t threadId, size_t 
 
 void* applicationSupportThread(void* data){
     Application* application = static_cast<Application*>(data);
-      
+
     while(!application->_supportStop){
         Message recvdMsg;
         int res = application->_channelRef.recv(&recvdMsg, sizeof(recvdMsg), 0);
@@ -80,7 +80,7 @@ void* applicationSupportThread(void* data){
                 while(keepWaitingSample(application, i, updatedSamples)){
                     // To wait, the idea is that after the consolidation request has been
                     // sent, samples should be stored at most after samplingLengthMs milliseconds.
-                    // If that time is already elapsed, we just wait for one millisecond 
+                    // If that time is already elapsed, we just wait for one millisecond
                     // (to avoid too tight spin loop), otherwise, we wait for that time to elapse.
                     // (it is performed at most once independently from the number of needed samples)
                     unsigned long long timeFromConsolidation = (getCurrentTimeNs() - consolidationTimestamp) / 1000000.0;
@@ -138,7 +138,7 @@ void* applicationSupportThread(void* data){
             }else if(!application->_supportStop){
                 throw std::runtime_error("FATAL ERROR: !_supportStop");
             }
-            
+
             // Aggregate custom values.
             if(application->_aggregator){
                 for(size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++){
@@ -193,7 +193,7 @@ Application::~Application(){
         delete _channel;
     }
     delete _threadData;
-}    
+}
 
 void Application::notifyStart(){
     Message msg;
@@ -247,13 +247,13 @@ void Application::setPhaseId(unsigned int phaseId, unsigned int totalThreads){
 }
 
 void Application::terminate(){
-    unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max(); 
+    unsigned long long lastEnd = 0, firstBegin = std::numeric_limits<unsigned long long>::max();
     for(ThreadData& td : *_threadData){
         // If I was doing sampling, I could have spurious
         // tasks that I didn't record. For this reason,
         // I record them now.
-        td.totalTasks += td.currentSample;    
-        
+        td.totalTasks += td.currentSample;
+
         _totalTasks += td.totalTasks;
         if(td.firstBegin < firstBegin){
             firstBegin = td.firstBegin;
@@ -266,7 +266,7 @@ void Application::terminate(){
 
     _supportStop = true;
     pthread_join(_supportTid, NULL);
-    
+
     Message msg;
     msg.type = MESSAGE_TYPE_STOP;
     msg.payload.summary.time = _executionTime;

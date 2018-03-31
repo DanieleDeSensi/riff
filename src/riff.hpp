@@ -34,7 +34,7 @@
 namespace riff{
 
 // Configuration parameters for riff behaviour
-// when collecting samples. 
+// when collecting samples.
 typedef struct ApplicationConfiguration{
     // Represents the minimum length in milliseconds
     // between two successive begin() calls. If begin()
@@ -57,14 +57,14 @@ typedef struct ApplicationConfiguration{
     bool adjustThroughput;
 
     // When sampling is applied, the latency estimation
-    // (and the idle time/utilization estimation) could be 
+    // (and the idle time/utilization estimation) could be
     // wrong. This means that we could pick latency sample which are
     // far from the average (lower/higher), thus since we assume that
     // latency is more or less constant, in very skewed situations
-    // our estimation could be completly wrong. This can 
+    // our estimation could be completly wrong. This can
     // be detected by riff by comparing the actual elapsed time
     // with the time computed as the sum of the latency and idle time.
-    // When these values are different, it means that either the 
+    // When these values are different, it means that either the
     // latency or the idle time have been not correctly estimated
     // (due to skewness). This can only happen when sampling is applied.
     // The following macro represents the maximum percentage of difference
@@ -427,7 +427,7 @@ public:
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
-    Application(const std::string& channelName, 
+    Application(const std::string& channelName,
                 size_t numThreads = 1,
                 Aggregator* aggregator = NULL);
 
@@ -440,7 +440,7 @@ public:
      * @param aggregator An aggregator object to aggregate custom values
      *        stored by multiple threads.
      */
-    Application(nn::socket& socket, unsigned int chid, 
+    Application(nn::socket& socket, unsigned int chid,
                 size_t numThreads = 1,
                 Aggregator* aggregator = NULL);
 
@@ -455,7 +455,7 @@ public:
      * @param configuration The application configuration.
      **/
     void setConfiguration(const ApplicationConfiguration& configuration);
-    
+
     /**
      * This function must be called at each loop iteration when the computation
      * part of the loop begins.
@@ -472,7 +472,7 @@ public:
         // tData.currentSample = (tData.currentSample + 1) % tData.samplingLength;
         // but faster.
         tData.currentSample = (tData.currentSample + 1) >= tData.samplingLength ? 0 : tData.currentSample + 1;
-      
+
         // Skip
         if(tData.currentSample > 1){
             return;
@@ -611,7 +611,7 @@ public:
         }
         // We only store samples if tData.currentSample == 0
         unsigned long long now = getCurrentTimeNs();
-        tData.rcvStart = now;    
+        tData.rcvStart = now;
 
         // If we perform sampling, we assume that all the other samples
         // different from the one recorded had the same latency.
@@ -662,7 +662,7 @@ public:
      * NOTE: It is not thread safe!
      */
     void terminate();
-    
+
     /**
      * Returns the execution time of the application (milliseconds).
      * MUST be called after terminate().
@@ -675,7 +675,7 @@ public:
      * Returns the total number of tasks computed by the application.
      * MUST be called after terminate().
      * @return The total number of tasks computed by the application.
-     * Is computed as the sum of tasks executed from the first call 
+     * Is computed as the sum of tasks executed from the first call
      * of begin() to the last call of end().
      */
     unsigned long long getTotalTasks();
@@ -712,7 +712,7 @@ public:
      * to communicate with the application.
      **/
     explicit Monitor(const std::string& channelName);
-    
+
     /**
      * Creates a monitor starting from an already existing
      * nanomsg socket.
@@ -727,7 +727,7 @@ public:
 
     Monitor(const Monitor& m) = delete;
     Monitor& operator=(Monitor const &x) = delete;
-    
+
     /**
      * Waits for an application to start.
      * @return The pid (process identifier) of the monitored application.
@@ -737,8 +737,8 @@ public:
     /**
      * Returns the current sample.
      * @param sample The returned sample.
-     * @return True if the sample has been succesfully stored, 
-     * False if the application terminated and thus there are 
+     * @return True if the sample has been succesfully stored,
+     * False if the application terminated and thus there are
      * no samples to be stored.
      **/
     bool getSample(ApplicationSample& sample);
@@ -766,7 +766,7 @@ public:
     /**
      * Returns the total number of tasks computed by the application.
      * @return The total number of tasks computed by the application.
-     * Is computed as the sum of tasks executed from the first call 
+     * Is computed as the sum of tasks executed from the first call
      * of begin() to the last call of end().
      */
     unsigned long long getTotalTasks();

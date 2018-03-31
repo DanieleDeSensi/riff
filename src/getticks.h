@@ -52,7 +52,7 @@
    defined according to whether the corresponding function/type/header
    is available on your system.  The necessary macros are most
    conveniently defined if you are using GNU autoconf, via the tests:
-   
+
    dnl ---------------------------------------------------------------------
 
    AC_C_INLINE
@@ -131,7 +131,7 @@ static __inline double elapsed(ticks t1, ticks t0) /* time in nanoseconds */
 {
      time_base_to_time(&t1, TIMEBASE_SZ);
      time_base_to_time(&t0, TIMEBASE_SZ);
-     return (((double)t1.tb_high - (double)t0.tb_high) * 1.0e9 + 
+     return (((double)t1.tb_high - (double)t0.tb_high) * 1.0e9 +
 	     ((double)t1.tb_low - (double)t0.tb_low));
 }
 
@@ -175,7 +175,7 @@ INLINE_ELAPSED(__inline__)
 
 /*----------------------------------------------------------------*/
 /*
- * Pentium cycle counter 
+ * Pentium cycle counter
  */
 #if (defined(__GNUC__) || defined(__ICC)) && defined(__i386__)  && !defined(HAVE_TICK_COUNTER)
 typedef unsigned long long ticks;
@@ -183,7 +183,7 @@ typedef unsigned long long ticks;
 static __inline__ ticks getticks(void)
 {
      ticks ret;
-	 
+	
      __asm__ __volatile__("rdtsc": "=A" (ret));
      /* no input, nothing else clobbered */
      return ret;
@@ -260,7 +260,7 @@ INLINE_ELAPSED(__inline__)
 #endif
 
 /*----------------------------------------------------------------
- generic Windows platform 
+ generic Windows platform
  March 2011, Marco Aldinucci, aldinuc@di.unito.it
 ----------------------------------------------------------------*/
 
@@ -287,7 +287,7 @@ INLINE_ELAPSED(inline)
 /* Visual C++ -- thanks to Morten Nissov for his help with this */
 #if _MSC_VER >= 1200 && _M_IX86 >= 500 && !defined(HAVE_TICK_COUNTER)
 #include <windows.h>
-typedef LARGE_INTEGER ticks; 
+typedef LARGE_INTEGER ticks;
 #define RDTSC __asm __emit 0fh __asm __emit 031h /* hack for VC++ 5.0 */
 
 static __inline ticks getticks(void)
@@ -303,9 +303,9 @@ static __inline ticks getticks(void)
 }
 
 static __inline double elapsed(ticks t1, ticks t0)
-{  
+{
      return (double)t1.QuadPart - (double)t0.QuadPart;
-}  
+}
 
 #define HAVE_TICK_COUNTER
 #define TIME_MIN 5000.0   /* unreliable pentium IV cycle counter */
@@ -320,9 +320,9 @@ typedef unsigned long long ticks;
 
 static __inline__ ticks getticks(void)
 {
-     unsigned a, d; 
-     asm volatile("rdtsc" : "=a" (a), "=d" (d)); 
-     return ((ticks)a) | (((ticks)d) << 32); 
+     unsigned a, d;
+     asm volatile("rdtsc" : "=a" (a), "=d" (d));
+     return ((ticks)a) | (((ticks)d) << 32);
 }
 
 INLINE_ELAPSED(__inline__)
@@ -333,7 +333,7 @@ INLINE_ELAPSED(__inline__)
 /* PGI compiler, courtesy Cristiano Calonaci, Andrea Tarsi, & Roberto Gori.
    NOTE: this code will fail to link unless you use the -Masmkeyword compiler
    option (grrr). */
-#if defined(__PGI) && defined(__x86_64__) && !defined(HAVE_TICK_COUNTER) 
+#if defined(__PGI) && defined(__x86_64__) && !defined(HAVE_TICK_COUNTER)
 typedef unsigned long long ticks;
 static ticks getticks(void)
 {
@@ -369,9 +369,9 @@ static __inline__ ticks getticks(void)
 {
      return __getReg(_IA64_REG_AR_ITC);
 }
- 
+
 INLINE_ELAPSED(__inline__)
- 
+
 #define HAVE_TICK_COUNTER
 #endif
 
@@ -434,7 +434,7 @@ INLINE_ELAPSED(inline)
 
 /*----------------------------------------------------------------*/
 /*
- * PA-RISC cycle counter 
+ * PA-RISC cycle counter
  */
 #if defined(__hppa__) || defined(__hppa) && !defined(HAVE_TICK_COUNTER)
 typedef unsigned long ticks;
@@ -482,7 +482,7 @@ INLINE_ELAPSED(__inline__)
 /*----------------------------------------------------------------*/
 #if defined(__GNUC__) && defined(__alpha__) && !defined(HAVE_TICK_COUNTER)
 /*
- * The 32-bit cycle counter on alpha overflows pretty quickly, 
+ * The 32-bit cycle counter on alpha overflows pretty quickly,
  * unfortunately.  A 1GHz machine overflows in 4 seconds.
  */
 typedef unsigned int ticks;
