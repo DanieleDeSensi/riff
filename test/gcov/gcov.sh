@@ -5,10 +5,10 @@
 for suffix in '*.gcno' '*.gcda' ; do 
 	find ./demo -name ${suffix} -type f -delete 
 	find ./test -name ${suffix} -type f -delete 
-	find ./src/external -name ${suffix} -type f -delete 
+	find ./src/external -name '${suffix}' -type f -delete 
 done
 # Get all remaining coverage files.
-COVFILES=$(find . -name *.gcda -type f)
+COVFILES=$(find . -name '*.gcda' -type f)
 CURRENTDIR=$(pwd)
 for file in ${COVFILES} ; do 
 	cd $(dirname ${file}) 
@@ -24,5 +24,5 @@ find ./test/gcov -name '*external*' -type f -delete
 
 # Remove all the .gcno and .gcda real files
 for suffix in '*.gcno' '*.gcda' ; do 
-	find ./src -name ${suffix} -type f -delete 
+	find ./src -name '${suffix}' -type f -delete 
 done

@@ -183,7 +183,7 @@ typedef unsigned long long ticks;
 static __inline__ ticks getticks(void)
 {
      ticks ret;
-	
+
      __asm__ __volatile__("rdtsc": "=A" (ret));
      /* no input, nothing else clobbered */
      return ret;
