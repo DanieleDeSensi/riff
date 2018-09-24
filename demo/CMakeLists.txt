@@ -1,0 +1,18 @@
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include(FindOpenMP)
+
+add_compile_options(${OpenMP_CXX_FLAGS})
+
+if(OPENMP_FOUND)
+	file(GLOB APP_SOURCES *.cpp )
+	find_library(ANL_LIBRARY NAMES anl)
+	foreach( demosourcefile ${APP_SOURCES} )
+	    get_filename_component(demoname ${demosourcefile} NAME_WE)
+	    add_executable( ${demoname} ${demosourcefile} )
+	    if(ENABLE_SHARED)
+	    	target_link_libraries( ${demoname} riff ${OpenMP_CXX_LIBRARIES} ${ANL_LIBRARY})
+	    else()
+	    	target_link_libraries( ${demoname} riff_static ${OpenMP_CXX_LIBRARIES} ${ANL_LIBRARY})
+	    endif()
+	endforeach( demosourcefile ${APP_SOURCES} )
+endif(OPENMP_FOUND)

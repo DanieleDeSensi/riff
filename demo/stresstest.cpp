@@ -2,7 +2,7 @@
  * This is a stresstest to check how many begin()/end() calls we can perform per time unit
  * and what is the cost of a begin()/end() calls pair.
  **/
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>

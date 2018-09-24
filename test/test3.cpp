@@ -2,7 +2,8 @@
  * Test: Checks the correctness of the library
  * using already existing nanomsg sockets and 1 thread only.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
+#include <riff/external/nanomsg/src/pair.h>
 
 #include <stdio.h>
 #include <unistd.h>

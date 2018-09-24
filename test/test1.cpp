@@ -1,7 +1,7 @@
 /**
  * Test: Checks the correctness of the library when used by multiple threads.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>

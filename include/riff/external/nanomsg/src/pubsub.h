@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2013 250bpm s.r.o.
+    Copyright (c) 2012 Martin Sustrik  All rights reserved.
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"),
@@ -20,23 +20,24 @@
     IN THE SOFTWARE.
 */
 
-#include "nn.hpp"
+#ifndef PUBSUB_H_INCLUDED
+#define PUBSUB_H_INCLUDED
 
-#include "../nanomsg/src/pair.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <cassert>
+#define NN_PROTO_PUBSUB 2
 
-int main ()
-{
-    nn::socket s1 (AF_SP, NN_PAIR);
-    s1.bind ("inproc://a");
-    nn::socket s2 (AF_SP, NN_PAIR);
-    s2.connect ("inproc://a");
+#define NN_PUB (NN_PROTO_PUBSUB * 16 + 0)
+#define NN_SUB (NN_PROTO_PUBSUB * 16 + 1)
 
-    s2.send ("ABC", 3, 0);
-    char buf [3];
-    int rc = s1.recv (buf, sizeof (buf), 0);
-    assert (rc == 3);
+#define NN_SUB_SUBSCRIBE 1
+#define NN_SUB_UNSUBSCRIBE 2
 
-    return 0;
+#ifdef __cplusplus
 }
+#endif
+
+#endif
+
