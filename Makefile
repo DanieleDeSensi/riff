@@ -1,7 +1,7 @@
 export CC                    = gcc
 export CXX                   = g++
 export OPTIMIZE_FLAGS        = -O3
-export CXXFLAGS              = $(RIFF_COVERAGE_FLAGS) -Wall -pedantic --std=c++11
+export CXXFLAGS              = $(RIFF_COVERAGE_FLAGS) -Wall -pedantic --std=c++11 -fPIC
 export LDLIBS                = $(RIFF_COVERAGE_LIBS) -lm -pthread -lrt -L $(realpath .)/src/ -lriff -lanl
 
 .PHONY: all demo test cppcheck clean cleanall develcheck cppcheck gcov
