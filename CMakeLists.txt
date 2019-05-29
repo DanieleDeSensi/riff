@@ -14,7 +14,7 @@ option (ENABLE_CPPCHECK "Enables cppcheck checks" OFF)
 option (ENABLE_CODECOV "Enables code coverage reports" OFF)
 option (ENABLE_CLANGFORMAT "Enables clang-format formatting" OFF)
 
-add_compile_options(-Wall -finline-functions -O3)
+add_compile_options(-Wall -finline-functions -O3 -fPIC)
 
 # This must be the first thing done, since COVERAGE_COMPILER_FLAGS must be used by all the targets
 ###########
