@@ -77,10 +77,17 @@ typedef struct ApplicationConfiguration{
     // [default = 5.0]
     double consistencyThreshold;
 
+
+    // Forces all the samples to be considered inconsistent, i.e.
+    // throughput and number of tasks are correct, but utilization and
+    // latency may be wrong.
+    bool inconsistent;
+
     ApplicationConfiguration(){
         samplingLengthMs = 10.0;
         adjustThroughput = true;
         consistencyThreshold = 5.0;
+        inconsistent = false;
     }
 }ApplicationConfiguration;
 
@@ -544,7 +551,9 @@ public:
                     // If the gap between real total time and the one estimated with
                     // latency and idle time is greater than a threshold, idleTime and
                     // latency are not reliable.
-                    if(((absDiff(sampleTime, sampleTimeEstimated) /
+                    if(_configuration.inconsistent){
+                        tData.consolidatedSample.inconsistent = true;
+                    }else if(((absDiff(sampleTime, sampleTimeEstimated) /
                          (double) sampleTime) * 100.0) > _configuration.consistencyThreshold){
                         if(!_configuration.samplingLengthMs){
 #if defined RIFF_DEFAULT_SAMPLING_LENGTH && RIFF_DEFAULT_SAMPLING_LENGTH == 1
@@ -602,6 +611,10 @@ public:
      *        identifying the thread calling this function and in
      *        the range [0, n[, where n is the number of threads specified
      *        in the constructor.
+     * @param weight In some cases with one single instrumentation we may 
+     *        want to account for multiple iterations. In such case weight
+     *        represents the number of iterations associated to that single
+     *        instrumentation.
      */
     inline void end(unsigned int threadId = 0, unsigned int weight = 1){
         ThreadData& tData = _threadData->at(threadId);
