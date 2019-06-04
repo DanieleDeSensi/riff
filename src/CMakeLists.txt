@@ -10,15 +10,15 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/riff
 ####################
 # Library building #
 ####################
-if(ENABLE_SHARED)
-  option(NN_STATIC_LIB "" OFF)
+  option(NN_STATIC_LIB "" ON)
+  #option(NN_STATIC_LIB "" OFF)
   add_subdirectory(${PROJECT_SOURCE_DIR}/src/external/nanomsg)
   add_library(riff SHARED ${SOURCES})
   target_link_libraries(riff nanomsg pthread)
   install(TARGETS riff DESTINATION lib)
-else()
-  option(NN_STATIC_LIB "" ON)
-  add_subdirectory(${PROJECT_SOURCE_DIR}/src/external/nanomsg)
+
+
+  #add_subdirectory(${PROJECT_SOURCE_DIR}/src/external/nanomsg)
   add_library(riff_static STATIC ${SOURCES})
   target_link_libraries(riff_static nanomsg pthread)
   install(TARGETS riff_static DESTINATION lib)
@@ -27,7 +27,6 @@ else()
                    COMMAND ${CMAKE_AR} -M  < ${PROJECT_SOURCE_DIR}/src/buildlib.ar
                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   )
-endif(ENABLE_SHARED)
 
 
 ####################

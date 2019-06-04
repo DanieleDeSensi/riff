@@ -8,7 +8,6 @@ set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/modules
 ###########
 # Options #
 ###########
-option (ENABLE_SHARED "Build shared library instead of static one" OFF)
 option (ENABLE_TESTS "Enables testing" OFF)
 option (ENABLE_CPPCHECK "Enables cppcheck checks" OFF)
 option (ENABLE_CODECOV "Enables code coverage reports" OFF)
@@ -56,18 +55,12 @@ endif (ENABLE_TESTS)
 ###########
 # codecov #
 ###########
-if(ENABLE_SHARED)
-	set(LIBNAME riff)
-else()
-	set(LIBNAME riff_static)
-endif()
-
 if (ENABLE_CODECOV)
     set(COVERAGE_GCOVR_EXCLUDES 'src/external/*' 'test/*' 'demo/*')
     SETUP_TARGET_FOR_COVERAGE_GCOVR_XML(
         NAME coverage
         EXECUTABLE make && make test_riff
-        DEPENDENCIES ${LIBNAME}
+        DEPENDENCIES riff
     )
 endif (ENABLE_CODECOV)
 

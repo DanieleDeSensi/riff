@@ -41,6 +41,7 @@ int main(int argc, char** argv){
         std::cerr << "Usage: " << argv[0] << " [0(Monitor) or 1(Application)]" << std::endl;
         return -1;
     }
+    bool firstChance = true;
     if(atoi(argv[1]) == 0){
         riff::Monitor mon(CHNAME);
         std::cout << "[[Monitor]]: Waiting application start." << std::endl;
@@ -56,7 +57,11 @@ int main(int argc, char** argv){
             if(abs(expectedLatency - sample.latency)/(double) expectedLatency > TOLERANCE){
                 std::cerr << "Expected latency: " << expectedLatency <<
                              " Actual latency: " << sample.latency << std::endl;
-                return -1;
+                if(!firstChance){
+                    return -1;
+                }else{
+                    firstChance = false;
+                }
             }
             if(abs(expectedUtilization - sample.loadPercentage)/(double) expectedUtilization > TOLERANCE){
                 std::cerr << "Expected utilization: " << expectedUtilization <<
