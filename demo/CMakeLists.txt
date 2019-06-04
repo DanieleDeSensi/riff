@@ -1,0 +1,17 @@
+include_directories(${PROJECT_SOURCE_DIR}/include)
+include(FindOpenMP)
+
+add_compile_options(${OpenMP_CXX_FLAGS})
+
+if(OPENMP_FOUND)
+	file(GLOB APP_SOURCES *.cpp )
+	find_library(ANL_LIBRARY NAMES anl)
+	foreach( demosourcefile ${APP_SOURCES} )
+	    get_filename_component(demoname ${demosourcefile} NAME_WE)
+	    add_executable( ${demoname} ${demosourcefile} )
+	    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+     	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+     	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+	   	target_link_libraries( ${demoname} riff ${ANL_LIBRARY})
+	endforeach( demosourcefile ${APP_SOURCES} )
+endif(OPENMP_FOUND)

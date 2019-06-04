@@ -1,7 +1,7 @@
 /**
  * Test: Checks the correctness of operators on samples.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>

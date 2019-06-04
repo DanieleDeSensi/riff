@@ -1,10 +1,12 @@
 /**
  * Test: Checks the correctness of the library when used by multiple threads.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>
+#include <chrono>
+#include <thread>
 #include <omp.h>
 
 
@@ -45,7 +47,7 @@ int main(int argc, char** argv){
         mon.waitStart();
         std::cout << "[[Monitor]]: Application started." << std::endl;
         riff::ApplicationSample sample;
-        usleep(MONITORING_INTERVAL);
+        std::this_thread::sleep_for(std::chrono::microseconds(MONITORING_INTERVAL));
         while(mon.getSample(sample)){
             std::cout << "Received sample: " << sample << std::endl;
 
@@ -82,7 +84,7 @@ int main(int argc, char** argv){
                 std::cerr << "Impossible to assess correctness of custom values. Use a longer monitoring interval." << std::endl;
                 return -1;
             }
-            usleep(MONITORING_INTERVAL);
+            std::this_thread::sleep_for(std::chrono::microseconds(MONITORING_INTERVAL));
         }
         uint expectedExecutionTime = ((ITERATIONS*(IDLE_TIME+LATENCY))/(double)NUM_THREADS) / 1000; // Microseconds to milliseconds
         if(abs(expectedExecutionTime - mon.getExecutionTime())/expectedExecutionTime > TOLERANCE){
@@ -100,10 +102,10 @@ int main(int argc, char** argv){
         for(size_t i = 0; i < ITERATIONS; i++){
             int threadId = omp_get_thread_num();
             //std::cout << "[[Application]] Receiving." << std::endl;
-            usleep(IDLE_TIME);
+            std::this_thread::sleep_for(std::chrono::microseconds(IDLE_TIME));
             //std::cout << "[[Application]] Computing." << std::endl;
             app.begin(threadId);
-            usleep(LATENCY);
+            std::this_thread::sleep_for(std::chrono::microseconds(LATENCY));
             //std::cout << "[[Application]] Computed." << std::endl;
             app.storeCustomValue(0, CUSTOM_VALUE_0, threadId);
             app.storeCustomValue(1, CUSTOM_VALUE_1, threadId);

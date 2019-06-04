@@ -3,7 +3,7 @@
  * using already existing nanomsg sockets and 1 thread only and checking
  * correctness of markInconsistentSamples call.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>

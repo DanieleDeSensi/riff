@@ -1,4 +1,4 @@
-OPEN libriff.a
-ADDLIB external/nanomsg/build/libnanomsg.a
+OPEN ./src/libriff_static.a
+ADDLIB ./src/external/nanomsg/libnanomsg.a
 SAVE
 END

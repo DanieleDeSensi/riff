@@ -25,6 +25,8 @@
 
 #include "../nanomsg/src/nn.h"
 
+#define UNUSED(x) (void)(x)
+
 #include <cassert>
 #include <cstring>
 #include <algorithm>
@@ -96,6 +98,7 @@ namespace nn
         {
             int rc = nn_close (s);
             assert (rc == 0);
+            UNUSED(rc);
         }
 
         inline void setsockopt (int level, int option, const void *optval,

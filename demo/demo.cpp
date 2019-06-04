@@ -1,4 +1,4 @@
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>

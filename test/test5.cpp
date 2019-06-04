@@ -1,7 +1,7 @@
 /**
  * Test: Checks the correctness of the library when used by multiple threads.
  */
-#include "../src/riff.hpp"
+#include <riff/riff.hpp>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -60,7 +60,9 @@ int main(int argc, char** argv){
                 }catch(const std::exception& e){
                     exc1 = true;
                 }
-                assert(exc1);
+                if(!exc1){
+                    throw std::runtime_error("Exception expected\n");
+                }
             }
             if(threadId == 0){
                 // Simulates a very slow thread
@@ -85,7 +87,9 @@ int main(int argc, char** argv){
                 exc2 = true;
             }
 
-            assert(exc1 && exc2);
+            if(!(exc1 && exc2)){
+                throw std::runtime_error("Exception expected\n");
+            }
         }
         app.terminate();
         std::cout << "Execution time: " << app.getExecutionTime() << std::endl;
