@@ -10,7 +10,7 @@
 
 #define CHNAME "ipc:///tmp/demo.ipc"
 
-#define ITERATIONS 10000
+#define ITERATIONS 1000
 #define NUM_THREADS 1
 #ifndef TOLERANCE
 #define TOLERANCE 0.1 // Between 0 and 1
@@ -19,8 +19,8 @@
 #define CUSTOM_VALUE_1 5
 
 // In microseconds
-#define IDLE_TIME 1000
-#define LATENCY 3000
+#define IDLE_TIME 10000
+#define LATENCY 30000
 #define MONITORING_INTERVAL 1000000
 
 class DemoAggregator: public riff::Aggregator{
