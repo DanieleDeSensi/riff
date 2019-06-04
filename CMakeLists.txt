@@ -3,7 +3,7 @@ project(riff)
 set (CMAKE_BUILD_TYPE Release)
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_C_STANDARD 11)
-set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/modules/")
 
 ###########
 # Options #
@@ -48,7 +48,7 @@ endif (ENABLE_CPPCHECK)
 if (ENABLE_TESTS)
 	add_subdirectory(test)
     add_custom_target(test_riff
-                      COMMAND ${CMAKE_SOURCE_DIR}/test/runtests.sh
+                      COMMAND ${PROJECT_SOURCE_DIR}/test/runtests.sh
                       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/test
   	)
 endif (ENABLE_TESTS)

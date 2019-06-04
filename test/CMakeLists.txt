@@ -1,12 +1,16 @@
 ########################
 # Src and header files #
 ########################
-include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/include)
 file(GLOB SOURCES "*.cpp")
 
 include(FindOpenMP)
 
 add_compile_options(${OpenMP_CXX_FLAGS})
+
+if(${CMAKE_VERSION} VERSION_LESS "3.9") 
+    set(OpenMP_CXX_LIBRARIES "-fopenmp")
+endif()
 
 if(OPENMP_FOUND)
   file(GLOB APP_SOURCES *.cpp )
