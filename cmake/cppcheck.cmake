@@ -7,7 +7,7 @@ endif()
 
 add_custom_target(
         cppcheck
-        COMMAND ${CPPCHECK_EXECUTABLE} --xml --xml-version=2 --enable=warning,performance,style --error-exitcode=1 --suppressions-list=${PROJECT_SOURCE_DIR}/test/cppcheck/suppressions-list.txt -UNN_EXPORT ${PROJECT_SOURCE_DIR}/src/ ${PROJECT_SOURCE_DIR}/include/ -i${PROJECT_BINARY_DIR} -i${PROJECT_SOURCE_DIR}/demo/ -i${PROJECT_SOURCE_DIR}/microbench/ -i${PROJECT_SOURCE_DIR}/cmake/ external -itest 2> cppcheck-report.xml || (cat cppcheck-report.xml && exit 2) 
+        COMMAND ${CPPCHECK_EXECUTABLE} --xml --xml-version=2 --enable=warning,performance,style --error-exitcode=1 --suppressions-list=${PROJECT_SOURCE_DIR}/test/cppcheck/suppressions-list.txt -UNN_EXPORT ${PROJECT_SOURCE_DIR}/src/ ${PROJECT_SOURCE_DIR}/include/ -i${PROJECT_BINARY_DIR} -i${PROJECT_SOURCE_DIR}/demo/ -i${PROJECT_SOURCE_DIR}/microbench/ -i${PROJECT_SOURCE_DIR}/cmake/ -i${PROJECT_SOURCE_DIR}/src/external -i${PROJECT_SOURCE_DIR}/test 2> cppcheck-report.xml || (cat cppcheck-report.xml && exit 2) 
 )
 
 
