@@ -625,7 +625,7 @@ class Application {
    *        the range [0, n[, where n is the number of threads specified
    *        in the constructor.
    */
-  inline void end(unsigned int threadId = 0) {
+  inline void end(unsigned int threadId = 0, unsigned int weight = 1) {
     ThreadData& tData = _threadData->at(threadId);
     // Skip
     if (tData.currentSample) {
@@ -638,9 +638,9 @@ class Application {
     // If we perform sampling, we assume that all the other samples
     // different from the one recorded had the same latency.
     double newLatency = (tData.rcvStart - tData.computeStart);
-    tData.sample.latency += (newLatency * tData.samplingLength);
-    tData.sample.numTasks += tData.samplingLength;
-    tData.totalTasks += tData.samplingLength;
+    tData.sample.latency += (newLatency * tData.samplingLength * weight);
+    tData.sample.numTasks += tData.samplingLength * weight;
+    tData.totalTasks += tData.samplingLength * weight;
     tData.lastEnd = now;
   }
 
