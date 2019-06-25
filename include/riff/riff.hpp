@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-#define RIFF_MAX_CUSTOM_FIELDS 4
+#define RIFF_MAX_CUSTOM_FIELDS 8
 
 #ifndef RIFF_DEFAULT_SAMPLING_LENGTH
 // Never skips any begin() call.
