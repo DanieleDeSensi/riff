@@ -156,11 +156,13 @@ void* applicationSupportThread(void* data) {
         throw std::runtime_error("FATAL ERROR: !_supportStop");
       }
 
-      // Aggregate custom values.
-      if (application->_aggregator) {
-        for (size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++) {
+      // Aggregate custom values.      
+      for (size_t i = 0; i < RIFF_MAX_CUSTOM_FIELDS; i++) {
+        if (application->_aggregator) {
           msg.payload.sample.customFields[i] =
-              application->_aggregator->aggregate(i, customVec[i]);
+            application->_aggregator->aggregate(i, customVec[i]);
+        }else{
+          msg.payload.sample.customFields[i] = customVec[i][0];
         }
       }
 
