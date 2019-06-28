@@ -162,7 +162,10 @@ void* applicationSupportThread(void* data) {
           msg.payload.sample.customFields[i] =
             application->_aggregator->aggregate(i, customVec[i]);
         }else{
-          msg.payload.sample.customFields[i] = customVec[i][0];
+            // Check needed for a corner termination case
+            if(!customVec[i].empty()){
+                msg.payload.sample.customFields[i] = customVec[i][0];
+            }
         }
       }
 
