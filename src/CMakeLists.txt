@@ -2,7 +2,7 @@
 # Src and header files #
 ########################
 include_directories(${PROJECT_SOURCE_DIR}/include)
-file(GLOB SOURCES "*.cpp" "*.c")
+file(GLOB SOURCES "riff.cpp" "${PROJECT_SOURCE_DIR}/include/riff/archdata.hpp")
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/riff
         DESTINATION include)
@@ -25,7 +25,16 @@ add_custom_command(TARGET riff_static
                    POST_BUILD
                    COMMAND ${CMAKE_AR} -M  < ${PROJECT_SOURCE_DIR}/src/buildlib.ar
                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-)
+		   )
+
+add_custom_target(archdata
+                  COMMAND ${PROJECT_SOURCE_DIR}/src/build_archdata.sh ${PROJECT_SOURCE_DIR}/include/riff/archdata.hpp
+                  DEPENDS ticksPerNs
+		  )
+		   
+add_executable(ticksPerNs ticksPerNs.cpp)
+add_dependencies(riff archdata)
+add_dependencies(riff_static archdata)
 
 ####################
 # Uninstall target #
